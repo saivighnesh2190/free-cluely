@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai"
+import { GoogleGenAI } from "@google/genai"
 import fs from "fs"
 
 interface OllamaResponse {
@@ -7,11 +7,12 @@ interface OllamaResponse {
 }
 
 export class LLMHelper {
-  private model: GenerativeModel | null = null
+  private model: GoogleGenAI | null = null
   private readonly systemPrompt = `You are Wingman AI, a helpful, proactive assistant for any kind of problem or situation (not just coding). For any user input, analyze the situation, provide a clear problem statement, relevant context, and suggest several possible responses or actions the user could take next. Always explain your reasoning. Present your suggestions as a list of options or next steps.`
   private useOllama: boolean = false
   private ollamaModel: string = "llama3.2"
   private ollamaUrl: string = "http://localhost:11434"
+  private geminiModel: string = "models/gemini-2.5-flash"
 
   constructor(apiKey?: string, useOllama: boolean = false, ollamaModel?: string, ollamaUrl?: string) {
     this.useOllama = useOllama
@@ -24,8 +25,7 @@ export class LLMHelper {
       // Auto-detect and use first available model if specified model doesn't exist
       this.initializeOllamaModel()
     } else if (apiKey) {
-      const genAI = new GoogleGenerativeAI(apiKey)
-      this.model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
+      this.model = new GoogleGenAI({ apiKey })
       console.log("[LLMHelper] Using Google Gemini")
     } else {
       throw new Error("Either provide Gemini API key or enable Ollama mode")
@@ -38,6 +38,29 @@ export class LLMHelper {
       inlineData: {
         data: imageData.toString("base64"),
         mimeType: "image/png"
+      }
+    }
+  }
+
+  private async generateContentWithRetry(contents: any, model?: string): Promise<any> {
+    const maxRetries = 3;
+    let delay = 1000; // Start with 1 second
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const result = await this.model!.models.generateContent({
+          model: model || this.geminiModel,
+          contents: contents
+        });
+        return result;
+      } catch (error) {
+        if (error.message.includes('503') && attempt < maxRetries - 1) {
+          console.log(`[LLMHelper] Model overloaded, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2; // Exponential backoff
+        } else {
+          throw error;
+        }
       }
     }
   }
@@ -132,9 +155,8 @@ export class LLMHelper {
   "reasoning": "Explanation of why these suggestions are appropriate."
 }\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`
 
-      const result = await this.model.generateContent([prompt, ...imageParts])
-      const response = await result.response
-      const text = this.cleanJsonResponse(response.text())
+      const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }, ...imageParts] }])
+      const text = this.cleanJsonResponse(result.candidates[0].content.parts[0].text)
       return JSON.parse(text)
     } catch (error) {
       console.error("Error extracting problem from images:", error)
@@ -155,10 +177,9 @@ export class LLMHelper {
 
     console.log("[LLMHelper] Calling Gemini LLM for solution...");
     try {
-      const result = await this.model.generateContent(prompt)
+      const result = await this.generateContentWithRetry(prompt)
       console.log("[LLMHelper] Gemini LLM returned result.");
-      const response = await result.response
-      const text = this.cleanJsonResponse(response.text())
+      const text = this.cleanJsonResponse(result.candidates[0].content.parts[0].text)
       const parsed = JSON.parse(text)
       console.log("[LLMHelper] Parsed LLM response:", parsed)
       return parsed
@@ -182,9 +203,8 @@ export class LLMHelper {
   }
 }\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`
 
-      const result = await this.model.generateContent([prompt, ...imageParts])
-      const response = await result.response
-      const text = this.cleanJsonResponse(response.text())
+      const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }, ...imageParts] }])
+      const text = this.cleanJsonResponse(result.candidates[0].content.parts[0].text)
       const parsed = JSON.parse(text)
       console.log("[LLMHelper] Parsed debug LLM response:", parsed)
       return parsed
@@ -204,9 +224,8 @@ export class LLMHelper {
         }
       };
       const prompt = `${this.systemPrompt}\n\nDescribe this audio clip in a short, concise answer. In addition to your main answer, suggest several possible actions or responses the user could take next based on the audio. Do not return a structured JSON object, just answer naturally as you would to a user.`;
-      const result = await this.model.generateContent([prompt, audioPart]);
-      const response = await result.response;
-      const text = response.text();
+      const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }, audioPart] }]);
+      const text = result.candidates[0].content.parts[0].text;
       return { text, timestamp: Date.now() };
     } catch (error) {
       console.error("Error analyzing audio file:", error);
@@ -223,9 +242,8 @@ export class LLMHelper {
         }
       };
       const prompt = `${this.systemPrompt}\n\nDescribe this audio clip in a short, concise answer. In addition to your main answer, suggest several possible actions or responses the user could take next based on the audio. Do not return a structured JSON object, just answer naturally as you would to a user and be concise.`;
-      const result = await this.model.generateContent([prompt, audioPart]);
-      const response = await result.response;
-      const text = response.text();
+      const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }, audioPart] }]);
+      const text = result.candidates[0].content.parts[0].text;
       return { text, timestamp: Date.now() };
     } catch (error) {
       console.error("Error analyzing audio from base64:", error);
@@ -242,10 +260,9 @@ export class LLMHelper {
           mimeType: "image/png"
         }
       };
-      const prompt = `${this.systemPrompt}\n\nDescribe the content of this image in a short, concise answer. In addition to your main answer, suggest several possible actions or responses the user could take next based on the image. Do not return a structured JSON object, just answer naturally as you would to a user. Be concise and brief.`;
-      const result = await this.model.generateContent([prompt, imagePart]);
-      const response = await result.response;
-      const text = response.text();
+      const prompt = `${this.systemPrompt}\n\nAnalyze this screenshot. If there is a question or problem shown in the image, provide a direct answer or solution. If it's just an image without a clear question, describe the content briefly. Always be concise and helpful.`;
+      const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }, imagePart] }]);
+      const text = result.candidates[0].content.parts[0].text;
       return { text, timestamp: Date.now() };
     } catch (error) {
       console.error("Error analyzing image file:", error);
@@ -258,9 +275,9 @@ export class LLMHelper {
       if (this.useOllama) {
         return this.callOllama(message);
       } else if (this.model) {
-        const result = await this.model.generateContent(message);
-        const response = await result.response;
-        return response.text();
+        const result = await this.generateContentWithRetry(message);
+        const text = result.candidates[0].content.parts[0].text;
+        return text;
       } else {
         throw new Error("No LLM provider configured");
       }
@@ -298,7 +315,7 @@ export class LLMHelper {
   }
 
   public getCurrentModel(): string {
-    return this.useOllama ? this.ollamaModel : "gemini-2.0-flash";
+    return this.useOllama ? this.ollamaModel : this.geminiModel;
   }
 
   public async switchToOllama(model?: string, url?: string): Promise<void> {
@@ -317,8 +334,7 @@ export class LLMHelper {
 
   public async switchToGemini(apiKey?: string): Promise<void> {
     if (apiKey) {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      this.model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      this.model = new GoogleGenAI({ apiKey });
     }
     
     if (!this.model && !apiKey) {
@@ -344,9 +360,8 @@ export class LLMHelper {
           return { success: false, error: "No Gemini model configured" };
         }
         // Test with a simple prompt
-        const result = await this.model.generateContent("Hello");
-        const response = await result.response;
-        const text = response.text(); // Ensure the response is valid
+        const result = await this.generateContentWithRetry("Hello");
+        const text = result.candidates[0].content.parts[0].text; // Ensure the response is valid
         if (text) {
           return { success: true };
         } else {
