@@ -93,8 +93,12 @@ export class WindowHelper {
       focusable: true,
       resizable: true,
       movable: true,
+      skipTaskbar: true,
       x: 100, // Start at a visible position
-      y: 100
+      y: 100,
+      // Additional settings for full screen compatibility
+      // type: process.platform === "darwin" ? "panel" : "desktop", // Removed for testing
+      titleBarStyle: "hiddenInset"
     }
 
     this.mainWindow = new BrowserWindow(windowSettings)
@@ -116,8 +120,7 @@ export class WindowHelper {
       // Keep window focusable on Linux for proper interaction
       this.mainWindow.setFocusable(true)
     } 
-    this.mainWindow.setSkipTaskbar(true)
-    this.mainWindow.setAlwaysOnTop(true)
+    this.mainWindow.setAlwaysOnTop(true, "screen-saver")
 
     this.mainWindow.loadURL(startUrl).catch((err) => {
       console.error("Failed to load URL:", err)
@@ -130,7 +133,7 @@ export class WindowHelper {
         this.centerWindow()
         this.mainWindow.show()
         this.mainWindow.focus()
-        this.mainWindow.setAlwaysOnTop(true)
+        this.mainWindow.setAlwaysOnTop(true, "screen-saver")
         console.log("Window is now visible and centered")
       }
     })
@@ -161,6 +164,17 @@ export class WindowHelper {
       if (this.mainWindow) {
         const bounds = this.mainWindow.getBounds()
         this.windowSize = { width: bounds.width, height: bounds.height }
+      }
+    })
+
+    this.mainWindow.on("blur", () => {
+      console.log("[WindowHelper] Window lost focus")
+    })
+
+    this.mainWindow.on("focus", () => {
+      console.log("[WindowHelper] Window gained focus")
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.setAlwaysOnTop(true, "screen-saver")
       }
     })
 
@@ -209,6 +223,7 @@ export class WindowHelper {
     }
 
     this.mainWindow.showInactive()
+    this.mainWindow.setAlwaysOnTop(true, "screen-saver")
 
     this.isWindowVisible = true
   }
@@ -262,7 +277,7 @@ export class WindowHelper {
     this.centerWindow()
     this.mainWindow.show()
     this.mainWindow.focus()
-    this.mainWindow.setAlwaysOnTop(true)
+    this.mainWindow.setAlwaysOnTop(true, "screen-saver")
     this.isWindowVisible = true
     
     console.log(`Window centered and shown`)
