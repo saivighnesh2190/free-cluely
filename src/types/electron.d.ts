@@ -1,9 +1,9 @@
 export interface ElectronAPI {
   updateContentDimensions: (dimensions: { width: number; height: number }) => Promise<void>
-  getScreenshots: () => Promise<Array<{ path: string; preview: string }>>
+  getScreenshots: () => Promise<Array<{ path: string; preview: string; question?: string }>>
   deleteScreenshot: (path: string) => Promise<{ success: boolean; error?: string }>
 
-  onScreenshotTaken: (callback: (data: { path: string; preview: string }) => void) => () => void
+  onScreenshotTaken: (callback: (data: { path: string; preview: string; question?: string }) => void) => () => void
   onScreenshotError: (callback: (data: { message: string; details: string }) => void) => () => void
   onSolutionsReady: (callback: (solutions: string) => void) => () => void
   onResetView: (callback: () => void) => () => void
@@ -25,7 +25,8 @@ export interface ElectronAPI {
 
   analyzeAudioFromBase64: (data: string, mimeType: string) => Promise<{ text: string; timestamp: number }>
   analyzeAudioFile: (path: string) => Promise<{ text: string; timestamp: number }>
-  analyzeImageFile: (path: string) => Promise<void>
+  analyzeImageFile: (path: string, question?: string) => Promise<{ text: string; timestamp: number }>
+  setScreenshotQuestion: (path: string, question: string) => Promise<{ success: boolean; error?: string }>
   quitApp: () => Promise<void>
 
   // LLM Model Management

@@ -367,12 +367,12 @@ export class LLMHelper {
     }
   }
 
-  public async analyzeImageFile(imagePath: string) {
+  public async analyzeImageFile(imagePath: string, userQuestion?: string) {
     try {
       // For OpenRouter, we can't analyze images directly
       if (this.useOpenRouter) {
         const prompt = `${this.systemPrompt}\n\nI have a screenshot that I need help analyzing. Since I cannot see the image directly, please provide guidance on what information would be most helpful to extract from coding/problem-solving screenshots.\n\nAnalyze this screenshot. If there is a question or problem shown in the image, provide a direct answer or solution. If it's just an image without a clear question, describe the content briefly. Always be concise and helpful.`;
-        
+
         const result = await this.callOpenRouter(prompt);
         return { text: result, timestamp: Date.now() };
       }
@@ -385,7 +385,7 @@ export class LLMHelper {
           mimeType: "image/png"
         }
       };
-      const prompt = `${this.systemPrompt}\n\nAnalyze this screenshot. If there is a question or problem shown in the image, provide a direct answer or solution. If it's just an image without a clear question, describe the content briefly. Always be concise and helpful.`;
+      const prompt = `${this.systemPrompt}\n\nAnalyze this screenshot.${userQuestion ? ` The user specifically asked: "${userQuestion}"` : ""} If there is a question or problem shown in the image, provide a direct answer or solution. If it's just an image without a clear question, describe the content briefly. Always be concise and helpful.`;
       const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }, imagePart] }]);
       const text = result.candidates[0].content.parts[0].text;
       return { text, timestamp: Date.now() };

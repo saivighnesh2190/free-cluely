@@ -25,6 +25,8 @@ export class AppState {
     test_cases: Array<Record<string, any>>
   } | null = null // Allow null
 
+  private screenshotMetadata: Map<string, { question: string }> = new Map()
+
   private hasDebugged: boolean = false
 
   // Processing events
@@ -134,6 +136,9 @@ export class AppState {
   public clearQueues(): void {
     this.screenshotHelper.clearQueues()
 
+    // Clear screenshot metadata
+    this.screenshotMetadata.clear()
+
     // Clear problem info
     this.problemInfo = null
 
@@ -160,7 +165,23 @@ export class AppState {
   public async deleteScreenshot(
     path: string
   ): Promise<{ success: boolean; error?: string }> {
-    return this.screenshotHelper.deleteScreenshot(path)
+    const result = await this.screenshotHelper.deleteScreenshot(path)
+    if (result.success) {
+      this.screenshotMetadata.delete(path)
+    }
+    return result
+  }
+
+  public addScreenshotMetadata(path: string, question: string): void {
+    this.screenshotMetadata.set(path, { question })
+  }
+
+  public getScreenshotMetadata(path: string): { question: string } | undefined {
+    return this.screenshotMetadata.get(path)
+  }
+
+  public removeScreenshotMetadata(path: string): void {
+    this.screenshotMetadata.delete(path)
   }
 
   // New methods to move the window

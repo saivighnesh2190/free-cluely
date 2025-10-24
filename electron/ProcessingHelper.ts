@@ -80,7 +80,8 @@ export class ProcessingHelper {
       this.appState.setView("solutions")
       this.currentProcessingAbortController = new AbortController()
       try {
-        const imageResult = await this.llmHelper.analyzeImageFile(lastPath);
+        const metadata = this.appState.getScreenshotMetadata(lastPath)
+        const imageResult = await this.llmHelper.analyzeImageFile(lastPath, metadata?.question)
         const problemInfo = {
           problem_statement: imageResult.text,
           input_format: { description: "Generated from screenshot", parameters: [] as any[] },
@@ -88,7 +89,8 @@ export class ProcessingHelper {
           complexity: { time: "N/A", space: "N/A" },
           test_cases: [] as any[],
           validation_type: "manual",
-          difficulty: "custom"
+          difficulty: "custom",
+          question: metadata?.question || ""
         };
         mainWindow.webContents.send(this.appState.PROCESSING_EVENTS.PROBLEM_EXTRACTED, problemInfo);
         this.appState.setProblemInfo(problemInfo);

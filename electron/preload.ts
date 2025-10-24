@@ -32,8 +32,9 @@ interface ElectronAPI {
   moveWindowDown: () => Promise<void>
   analyzeAudioFromBase64: (data: string, mimeType: string) => Promise<{ text: string; timestamp: number }>
   analyzeAudioFile: (path: string) => Promise<{ text: string; timestamp: number }>
-  analyzeImageFile: (path: string) => Promise<void>
+  analyzeImageFile: (path: string, question?: string) => Promise<{ text: string; timestamp: number }>
   quitApp: () => Promise<void>
+  setScreenshotQuestion: (path: string, question: string) => Promise<{ success: boolean; error?: string }>
   
   // LLM Model Management
   getCurrentLlmConfig: () => Promise<{ provider: "ollama" | "gemini" | "openrouter"; model: string; isOllama: boolean; isOpenRouter: boolean }>
@@ -178,8 +179,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   moveWindowDown: () => ipcRenderer.invoke("move-window-down"),
   analyzeAudioFromBase64: (data: string, mimeType: string) => ipcRenderer.invoke("analyze-audio-base64", data, mimeType),
   analyzeAudioFile: (path: string) => ipcRenderer.invoke("analyze-audio-file", path),
-  analyzeImageFile: (path: string) => ipcRenderer.invoke("analyze-image-file", path),
+  analyzeImageFile: (path: string, question?: string) => ipcRenderer.invoke("analyze-image-file", path, question),
   quitApp: () => ipcRenderer.invoke("quit-app"),
+  setScreenshotQuestion: (path: string, question: string) => ipcRenderer.invoke("set-screenshot-question", path, question),
   
   // LLM Model Management
   getCurrentLlmConfig: () => ipcRenderer.invoke("get-current-llm-config"),

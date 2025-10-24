@@ -13,13 +13,13 @@ declare global {
         width: number
         height: number
       }) => Promise<void>
-      getScreenshots: () => Promise<Array<{ path: string; preview: string }>>
+      getScreenshots: () => Promise<Array<{ path: string; preview: string; question?: string }>>
 
       //GLOBAL EVENTS
       //TODO: CHECK THAT PROCESSING NO SCREENSHOTS AND TAKE SCREENSHOTS ARE BOTH CONDITIONAL
       onUnauthorized: (callback: () => void) => () => void
       onScreenshotTaken: (
-        callback: (data: { path: string; preview: string }) => void
+        callback: (data: { path: string; preview: string; question?: string }) => void
       ) => () => void
       onProcessingNoScreenshots: (callback: () => void) => () => void
       onResetView: (callback: () => void) => () => void
@@ -42,6 +42,8 @@ declare global {
       // Audio Processing
       analyzeAudioFromBase64: (data: string, mimeType: string) => Promise<{ text: string; timestamp: number }>
       analyzeAudioFile: (path: string) => Promise<{ text: string; timestamp: number }>
+      analyzeImageFile: (path: string, question?: string) => Promise<{ text: string; timestamp: number }>
+      setScreenshotQuestion: (path: string, question: string) => Promise<{ success: boolean; error?: string }>
 
       moveWindowLeft: () => Promise<void>
       moveWindowRight: () => Promise<void>

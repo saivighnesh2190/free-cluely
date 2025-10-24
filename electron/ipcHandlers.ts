@@ -36,14 +36,16 @@ export function initializeIpcHandlers(appState: AppState): void {
         previews = await Promise.all(
           appState.getScreenshotQueue().map(async (path) => ({
             path,
-            preview: await appState.getImagePreview(path)
+            preview: await appState.getImagePreview(path),
+            question: appState.getScreenshotMetadata(path)?.question || ""
           }))
         )
       } else {
         previews = await Promise.all(
           appState.getExtraScreenshotQueue().map(async (path) => ({
             path,
-            preview: await appState.getImagePreview(path)
+            preview: await appState.getImagePreview(path),
+            question: appState.getScreenshotMetadata(path)?.question || ""
           }))
         )
       }
@@ -93,13 +95,23 @@ export function initializeIpcHandlers(appState: AppState): void {
   })
 
   // IPC handler for analyzing image from file path
-  ipcMain.handle("analyze-image-file", async (event, path: string) => {
+  ipcMain.handle("analyze-image-file", async (event, path: string, question?: string) => {
     try {
-      const result = await appState.processingHelper.getLLMHelper().analyzeImageFile(path)
+      const result = await appState.processingHelper.getLLMHelper().analyzeImageFile(path, question)
       return result
     } catch (error: any) {
       console.error("Error in analyze-image-file handler:", error)
       throw error
+    }
+  })
+
+  ipcMain.handle("set-screenshot-question", async (_event, path: string, question: string) => {
+    try {
+      appState.addScreenshotMetadata(path, question)
+      return { success: true }
+    } catch (error: any) {
+      console.error("Error setting screenshot question:", error)
+      return { success: false, error: error.message }
     }
   })
 

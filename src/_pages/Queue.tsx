@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react"
-import { useQuery } from "react-query"
+import { useQuery, useQueryClient } from "react-query"
 import ScreenshotQueue from "../components/Queue/ScreenshotQueue"
 import {
   Toast,
@@ -10,9 +10,16 @@ import {
 } from "../components/ui/toast"
 import QueueCommands from "../components/Queue/QueueCommands"
 import ModelSelector from "../components/ui/ModelSelector"
+import ScreenshotQuestionDialog from "../components/ui/ScreenshotQuestionDialog"
 
 interface QueueProps {
   setView: React.Dispatch<React.SetStateAction<"queue" | "solutions" | "debug">>
+}
+
+interface ScreenshotItemData {
+  path: string
+  preview: string
+  question?: string
 }
 
 const Queue: React.FC<QueueProps> = ({ setView }) => {
@@ -37,8 +44,9 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
   const [currentModel, setCurrentModel] = useState<{ provider: string; model: string }>({ provider: "gemini", model: "gemini-2.0-flash" })
 
   const barRef = useRef<HTMLDivElement>(null)
+  const queryClient = useQueryClient()
 
-  const { data: screenshots = [], refetch } = useQuery<Array<{ path: string; preview: string }>, Error>(
+  const { data: screenshots = [], refetch } = useQuery<ScreenshotItemData[], Error>(
     ["screenshots"],
     async () => {
       try {
@@ -57,6 +65,8 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
       refetchOnMount: true
     }
   )
+
+  const [pendingQuestion, setPendingQuestion] = useState<{ path: string; preview: string } | null>(null)
 
   const showToast = (
     title: string,
@@ -167,28 +177,47 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
   useEffect(() => {
     // Listen for screenshot taken event
     const unsubscribe = window.electronAPI.onScreenshotTaken(async (data) => {
-      // Refetch screenshots to update the queue
-      await refetch();
-      // Show loading in chat
-      setChatLoading(true);
-      try {
-        // Get the latest screenshot path
-        const latest = data?.path || (Array.isArray(data) && data.length > 0 && data[data.length - 1]?.path);
-        if (latest) {
-          // Call the LLM to process the screenshot
-          const response = await window.electronAPI.invoke("analyze-image-file", latest);
-          setChatMessages((msgs) => [...msgs, { role: "gemini", text: response.text }]);
-        }
-      } catch (err) {
-        setChatMessages((msgs) => [...msgs, { role: "gemini", text: "Error: " + String(err) }]);
-      } finally {
-        setChatLoading(false);
-      }
+      setPendingQuestion({ path: data.path, preview: data.preview })
+      await refetch()
     });
     return () => {
       unsubscribe && unsubscribe();
     };
   }, [refetch]);
+
+  const analyzeScreenshot = async (path: string, question?: string) => {
+    setChatLoading(true)
+    try {
+      const response = await window.electronAPI.analyzeImageFile(path, question)
+      setChatMessages((msgs) => [...msgs, { role: "gemini", text: response.text }])
+    } catch (error) {
+      setChatMessages((msgs) => [...msgs, { role: "gemini", text: "Error: " + String(error) }])
+    } finally {
+      setChatLoading(false)
+    }
+  }
+
+  const handleQuestionSubmit = async (path: string, question: string) => {
+    try {
+      await window.electronAPI.setScreenshotQuestion(path, question)
+      queryClient.setQueryData<ScreenshotItemData[] | undefined>(["screenshots"], (existing) => {
+        if (!existing) return existing
+        return existing.map((item) =>
+          item.path === path ? { ...item, question } : item
+        )
+      })
+      await analyzeScreenshot(path, question)
+    } catch (error) {
+      console.error("Error saving screenshot question:", error)
+      showToast("Error", "Failed to save question for screenshot", "error")
+    } finally {
+      setPendingQuestion(null)
+    }
+  }
+
+  const handleQuestionCancel = () => {
+    setPendingQuestion(null)
+  }
 
   const handleTooltipVisibilityChange = (visible: boolean, height: number) => {
     setIsTooltipVisible(visible)
@@ -326,6 +355,11 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
           )}
         </div>
       </div>
+      <ScreenshotQuestionDialog
+        screenshot={pendingQuestion}
+        onCancel={handleQuestionCancel}
+        onSubmit={(question: string) => pendingQuestion && handleQuestionSubmit(pendingQuestion.path, question)}
+      />
     </div>
   )
 }
