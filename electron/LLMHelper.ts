@@ -332,7 +332,7 @@ export class LLMHelper {
     console.log(`[LLMHelper] Switched to Ollama: ${this.ollamaModel} at ${this.ollamaUrl}`);
   }
 
-  public async switchToGemini(apiKey?: string): Promise<void> {
+  public async switchToGemini(apiKey?: string, model?: string): Promise<void> {
     if (apiKey) {
       this.model = new GoogleGenAI({ apiKey });
     }
@@ -342,6 +342,9 @@ export class LLMHelper {
     }
     
     this.useOllama = false;
+    if (model) {
+      this.geminiModel = model;
+    }
     console.log("[LLMHelper] Switched to Gemini");
   }
 

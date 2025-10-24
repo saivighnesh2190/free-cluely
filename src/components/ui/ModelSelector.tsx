@@ -20,6 +20,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<"ollama" | "gemini">("gemini");
   const [selectedOllamaModel, setSelectedOllamaModel] = useState<string>("");
+  const [selectedGeminiModel, setSelectedGeminiModel] = useState<string>("models/gemini-2.5-flash");
   const [ollamaUrl, setOllamaUrl] = useState<string>("http://localhost:11434");
 
   useEffect(() => {
@@ -36,6 +37,8 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
       if (config.isOllama) {
         setSelectedOllamaModel(config.model);
         await loadOllamaModels();
+      } else {
+        setSelectedGeminiModel(config.model || "models/gemini-2.5-flash");
       }
     } catch (error) {
       console.error('Error loading current config:', error);
@@ -81,13 +84,16 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
       if (selectedProvider === 'ollama') {
         result = await window.electronAPI.switchToOllama(selectedOllamaModel, ollamaUrl);
       } else {
-        result = await window.electronAPI.switchToGemini(geminiApiKey || undefined);
+        result = await window.electronAPI.switchToGemini(geminiApiKey || undefined, selectedGeminiModel);
       }
 
       if (result.success) {
         await loadCurrentConfig();
         setConnectionStatus('success');
-        onModelChange?.(selectedProvider, selectedProvider === 'ollama' ? selectedOllamaModel : 'gemini-2.0-flash');
+        onModelChange?.(
+          selectedProvider,
+          selectedProvider === 'ollama' ? selectedOllamaModel : selectedGeminiModel
+        );
         // Auto-open chat window after successful model change
         setTimeout(() => {
           onChatOpen?.();
@@ -182,6 +188,18 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
             onChange={(e) => setGeminiApiKey(e.target.value)}
             className="w-full px-3 py-2 text-xs bg-white/40 border border-white/60 rounded focus:outline-none focus:ring-2 focus:ring-blue-400/60"
           />
+
+          <div>
+            <label className="text-xs font-medium text-gray-700">Gemini Model</label>
+            <select
+              value={selectedGeminiModel}
+              onChange={(e) => setSelectedGeminiModel(e.target.value)}
+              className="w-full mt-1 px-3 py-2 text-xs bg-white/40 border border-white/60 rounded focus:outline-none focus:ring-2 focus:ring-blue-400/60"
+            >
+              <option value="models/gemini-2.5-flash">Gemini 2.5 Flash (default)</option>
+              <option value="models/gemini-2.5-pro">Gemini 2.5 Pro</option>
+            </select>
+          </div>
         </div>
       ) : (
         <div className="space-y-2">
