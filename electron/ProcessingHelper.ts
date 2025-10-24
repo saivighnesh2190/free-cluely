@@ -1,10 +1,10 @@
-// ProcessingHelper.ts
-
 import { AppState } from "./main"
 import { LLMHelper } from "./LLMHelper"
 import dotenv from "dotenv"
+import path from "path"
 
-dotenv.config()
+// Load environment variables from .env file
+dotenv.config({ path: path.join(process.cwd(), '.env') })
 
 const isDev = process.env.NODE_ENV === "development"
 const isDevTest = process.env.IS_DEV_TEST === "true"
@@ -24,13 +24,20 @@ export class ProcessingHelper {
     const ollamaModel = process.env.OLLAMA_MODEL // Don't set default here, let LLMHelper auto-detect
     const ollamaUrl = process.env.OLLAMA_URL || "http://localhost:11434"
     
+    // Check for OpenRouter API key (prioritize this)
+    const openRouterApiKey = process.env.OPENROUTER_API_KEY
+    const openRouterModel = process.env.OPENROUTER_MODEL || "qwen/qwen3-coder:free"
+    
     if (useOllama) {
       console.log("[ProcessingHelper] Initializing with Ollama")
       this.llmHelper = new LLMHelper(undefined, true, ollamaModel, ollamaUrl)
+    } else if (openRouterApiKey) {
+      console.log("[ProcessingHelper] Initializing with OpenRouter")
+      this.llmHelper = new LLMHelper(undefined, false, undefined, undefined, true, openRouterApiKey, openRouterModel)
     } else {
       const apiKey = process.env.GEMINI_API_KEY
       if (!apiKey) {
-        throw new Error("GEMINI_API_KEY not found in environment variables. Set GEMINI_API_KEY or enable Ollama with USE_OLLAMA=true")
+        throw new Error("Neither OPENROUTER_API_KEY nor GEMINI_API_KEY found in environment variables. Set OPENROUTER_API_KEY, GEMINI_API_KEY, or enable Ollama with USE_OLLAMA=true")
       }
       console.log("[ProcessingHelper] Initializing with Gemini")
       this.llmHelper = new LLMHelper(apiKey, false)

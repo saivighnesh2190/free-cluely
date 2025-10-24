@@ -145,7 +145,8 @@ export function initializeIpcHandlers(appState: AppState): void {
       return {
         provider: llmHelper.getCurrentProvider(),
         model: llmHelper.getCurrentModel(),
-        isOllama: llmHelper.isUsingOllama()
+        isOllama: llmHelper.isUsingOllama(),
+        isOpenRouter: llmHelper.isUsingOpenRouter()
       };
     } catch (error: any) {
       console.error("Error getting current LLM config:", error);
@@ -182,6 +183,17 @@ export function initializeIpcHandlers(appState: AppState): void {
       return { success: true };
     } catch (error: any) {
       console.error("Error switching to Gemini:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle("switch-to-openrouter", async (_, apiKey: string, model?: string) => {
+    try {
+      const llmHelper = appState.processingHelper.getLLMHelper();
+      await llmHelper.switchToOpenRouter(apiKey, model);
+      return { success: true };
+    } catch (error: any) {
+      console.error("Error switching to OpenRouter:", error);
       return { success: false, error: error.message };
     }
   });

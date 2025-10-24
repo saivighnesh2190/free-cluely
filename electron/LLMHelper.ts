@@ -13,22 +13,34 @@ export class LLMHelper {
   private ollamaModel: string = "llama3.2"
   private ollamaUrl: string = "http://localhost:11434"
   private geminiModel: string = "models/gemini-2.5-flash"
+  private useOpenRouter: boolean = false
+  private geminiApiKey: string = ""
+  private openRouterApiKey: string = ""
+  private openRouterModel: string = "qwen/qwen3-coder:free"
 
-  constructor(apiKey?: string, useOllama: boolean = false, ollamaModel?: string, ollamaUrl?: string) {
+  constructor(apiKey?: string, useOllama: boolean = false, ollamaModel?: string, ollamaUrl?: string, useOpenRouter: boolean = false, openRouterApiKey?: string, openRouterModel?: string) {
     this.useOllama = useOllama
-    
-    if (useOllama) {
+    this.useOpenRouter = useOpenRouter
+    this.geminiApiKey = (apiKey ?? "").trim() || process.env.GEMINI_API_KEY?.trim() || ""
+    this.openRouterApiKey = (openRouterApiKey ?? "").trim() || process.env.OPENROUTER_API_KEY?.trim() || this.openRouterApiKey
+    if (openRouterModel) {
+      this.openRouterModel = openRouterModel
+    }
+
+    if (useOpenRouter) {
+      console.log(`[LLMHelper] Using OpenRouter with model: ${this.openRouterModel}`)
+    } else if (useOllama) {
       this.ollamaUrl = ollamaUrl || "http://localhost:11434"
       this.ollamaModel = ollamaModel || "gemma:latest" // Default fallback
       console.log(`[LLMHelper] Using Ollama with model: ${this.ollamaModel}`)
       
       // Auto-detect and use first available model if specified model doesn't exist
       this.initializeOllamaModel()
-    } else if (apiKey) {
-      this.model = new GoogleGenAI({ apiKey })
+    } else if (this.geminiApiKey) {
+      this.model = new GoogleGenAI({ apiKey: this.geminiApiKey })
       console.log("[LLMHelper] Using Google Gemini")
     } else {
-      throw new Error("Either provide Gemini API key or enable Ollama mode")
+      throw new Error("Either provide Gemini API key, enable Ollama mode, or provide OpenRouter API key")
     }
   }
 
@@ -76,19 +88,19 @@ export class LLMHelper {
   private async callOllama(prompt: string): Promise<string> {
     try {
       const response = await fetch(`${this.ollamaUrl}/api/generate`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           model: this.ollamaModel,
-          prompt: prompt,
+          prompt,
           stream: false,
           options: {
             temperature: 0.7,
-            top_p: 0.9,
+            top_p: 0.9
           }
-        }),
+        })
       })
 
       if (!response.ok) {
@@ -97,9 +109,51 @@ export class LLMHelper {
 
       const data: OllamaResponse = await response.json()
       return data.response
-    } catch (error) {
+    } catch (error: any) {
       console.error("[LLMHelper] Error calling Ollama:", error)
-      throw new Error(`Failed to connect to Ollama: ${error.message}. Make sure Ollama is running on ${this.ollamaUrl}`)
+      throw new Error(
+        `Failed to connect to Ollama: ${error.message}. Make sure Ollama is running on ${this.ollamaUrl}`
+      )
+    }
+  }
+
+  private async callOpenRouter(prompt: string): Promise<string> {
+    if (!this.openRouterApiKey) {
+      throw new Error("OpenRouter API key is not configured");
+    }
+
+    try {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.openRouterApiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://cluely.ai',
+          'X-Title': 'Cluely'
+        },
+        body: JSON.stringify({
+          model: this.openRouterModel,
+          messages: [
+            {
+              role: "user",
+              content: prompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 4096
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(`OpenRouter API error: ${response.status} ${response.statusText}. ${errorData.error?.message || ''}`)
+      }
+
+      const data = await response.json()
+      return data.choices[0]?.message?.content || ''
+    } catch (error) {
+      console.error("[LLMHelper] Error calling OpenRouter:", error)
+      throw new Error(`Failed to connect to OpenRouter: ${error.message}`)
     }
   }
 
@@ -146,6 +200,22 @@ export class LLMHelper {
 
   public async extractProblemFromImages(imagePaths: string[]) {
     try {
+      // For OpenRouter, we can't analyze images directly, so we'll provide a text description
+      if (this.useOpenRouter) {
+        const imageCount = imagePaths.length;
+        const prompt = `${this.systemPrompt}\n\nI have ${imageCount} screenshot(s) that I need help analyzing. Since I cannot see the images directly, please provide guidance on what information would be most helpful to extract from coding/problem-solving screenshots, and suggest a general approach for analyzing them.\n\nPlease provide your response in JSON format:\n{
+  "problem_statement": "General guidance for analyzing coding screenshots",
+  "context": "What to look for in coding screenshots",
+  "suggested_responses": ["Approach 1", "Approach 2", "..."],
+  "reasoning": "Why this guidance is helpful"
+}\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`
+        
+        const result = await this.callOpenRouter(prompt);
+        const parsed = JSON.parse(result);
+        return parsed;
+      }
+
+      // Original Gemini implementation for image analysis
       const imageParts = await Promise.all(imagePaths.map(path => this.fileToGenerativePart(path)))
       
       const prompt = `${this.systemPrompt}\n\nYou are a wingman. Please analyze these images and extract the following information in JSON format:\n{
@@ -175,14 +245,22 @@ export class LLMHelper {
   }
 }\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`
 
-    console.log("[LLMHelper] Calling Gemini LLM for solution...");
+    console.log("[LLMHelper] Calling LLM for solution...");
     try {
-      const result = await this.generateContentWithRetry(prompt)
-      console.log("[LLMHelper] Gemini LLM returned result.");
-      const text = this.cleanJsonResponse(result.candidates[0].content.parts[0].text)
-      const parsed = JSON.parse(text)
-      console.log("[LLMHelper] Parsed LLM response:", parsed)
-      return parsed
+      let result;
+      if (this.useOpenRouter) {
+        result = await this.callOpenRouter(prompt);
+        console.log("[LLMHelper] OpenRouter LLM returned result.");
+      } else {
+        result = await this.generateContentWithRetry(prompt);
+        console.log("[LLMHelper] Gemini LLM returned result.");
+        result = result.candidates[0].content.parts[0].text;
+      }
+      
+      const text = this.cleanJsonResponse(result);
+      const parsed = JSON.parse(text);
+      console.log("[LLMHelper] Parsed LLM response:", parsed);
+      return parsed;
     } catch (error) {
       console.error("[LLMHelper] Error in generateSolution:", error);
       throw error;
@@ -191,6 +269,26 @@ export class LLMHelper {
 
   public async debugSolutionWithImages(problemInfo: any, currentCode: string, debugImagePaths: string[]) {
     try {
+      // For OpenRouter, we can't analyze debug images directly, so we'll provide guidance
+      if (this.useOpenRouter) {
+        const imageCount = debugImagePaths.length;
+        const prompt = `${this.systemPrompt}\n\nYou are a wingman. Given:\n1. The original problem: ${JSON.stringify(problemInfo, null, 2)}\n2. The current code/solution: ${currentCode}\n3. I have ${imageCount} additional screenshot(s) showing debug/error information\n\nSince I cannot see the debug images directly, please provide general debugging guidance and suggest what information would be most helpful to see in debugging screenshots. Provide your response in this JSON format:\n{
+  "solution": {
+    "code": "Improved code or debugging suggestions",
+    "problem_statement": "Restate the problem",
+    "context": "What debugging information would be helpful",
+    "suggested_responses": ["Debug step 1", "Debug step 2", "..."],
+    "reasoning": "Why these suggestions are appropriate"
+  }
+}\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`
+        
+        const result = await this.callOpenRouter(prompt);
+        const parsed = JSON.parse(result);
+        console.log("[LLMHelper] Parsed OpenRouter debug response:", parsed);
+        return parsed;
+      }
+
+      // Original Gemini implementation for image analysis
       const imageParts = await Promise.all(debugImagePaths.map(path => this.fileToGenerativePart(path)))
       
       const prompt = `${this.systemPrompt}\n\nYou are a wingman. Given:\n1. The original problem or situation: ${JSON.stringify(problemInfo, null, 2)}\n2. The current response or approach: ${currentCode}\n3. The debug information in the provided images\n\nPlease analyze the debug information and provide feedback in this JSON format:\n{
@@ -216,6 +314,15 @@ export class LLMHelper {
 
   public async analyzeAudioFile(audioPath: string) {
     try {
+      // For OpenRouter, we can't analyze audio files directly
+      if (this.useOpenRouter) {
+        const prompt = `${this.systemPrompt}\n\nI have an audio file that I need help analyzing. Since I cannot process audio directly, please provide guidance on how to analyze audio files for problem-solving or coding assistance.\n\nDescribe this audio clip in a short, concise answer. In addition to your main answer, suggest several possible actions or responses the user could take next.`;
+        
+        const result = await this.callOpenRouter(prompt);
+        return { text: result, timestamp: Date.now() };
+      }
+
+      // Original Gemini implementation for audio analysis
       const audioData = await fs.promises.readFile(audioPath);
       const audioPart = {
         inlineData: {
@@ -235,6 +342,15 @@ export class LLMHelper {
 
   public async analyzeAudioFromBase64(data: string, mimeType: string) {
     try {
+      // For OpenRouter, we can't analyze audio data directly
+      if (this.useOpenRouter) {
+        const prompt = `${this.systemPrompt}\n\nI have audio data that I need help analyzing. Since I cannot process audio directly, please provide guidance on how to analyze audio data for problem-solving or coding assistance.\n\nDescribe this audio clip in a short, concise answer. In addition to your main answer, suggest several possible actions or responses the user could take next based on the audio.`;
+        
+        const result = await this.callOpenRouter(prompt);
+        return { text: result, timestamp: Date.now() };
+      }
+
+      // Original Gemini implementation for audio analysis
       const audioPart = {
         inlineData: {
           data,
@@ -253,6 +369,15 @@ export class LLMHelper {
 
   public async analyzeImageFile(imagePath: string) {
     try {
+      // For OpenRouter, we can't analyze images directly
+      if (this.useOpenRouter) {
+        const prompt = `${this.systemPrompt}\n\nI have a screenshot that I need help analyzing. Since I cannot see the image directly, please provide guidance on what information would be most helpful to extract from coding/problem-solving screenshots.\n\nAnalyze this screenshot. If there is a question or problem shown in the image, provide a direct answer or solution. If it's just an image without a clear question, describe the content briefly. Always be concise and helpful.`;
+        
+        const result = await this.callOpenRouter(prompt);
+        return { text: result, timestamp: Date.now() };
+      }
+
+      // Original Gemini implementation for image analysis
       const imageData = await fs.promises.readFile(imagePath);
       const imagePart = {
         inlineData: {
@@ -272,7 +397,9 @@ export class LLMHelper {
 
   public async chatWithGemini(message: string): Promise<string> {
     try {
-      if (this.useOllama) {
+      if (this.useOpenRouter) {
+        return this.callOpenRouter(message);
+      } else if (this.useOllama) {
         return this.callOllama(message);
       } else if (this.model) {
         const result = await this.generateContentWithRetry(message);
@@ -295,6 +422,10 @@ export class LLMHelper {
     return this.useOllama;
   }
 
+  public isUsingOpenRouter(): boolean {
+    return this.useOpenRouter;
+  }
+
   public async getOllamaModels(): Promise<string[]> {
     if (!this.useOllama) return [];
     
@@ -310,11 +441,13 @@ export class LLMHelper {
     }
   }
 
-  public getCurrentProvider(): "ollama" | "gemini" {
+  public getCurrentProvider(): "ollama" | "gemini" | "openrouter" {
+    if (this.useOpenRouter) return "openrouter";
     return this.useOllama ? "ollama" : "gemini";
   }
 
   public getCurrentModel(): string {
+    if (this.useOpenRouter) return this.openRouterModel;
     return this.useOllama ? this.ollamaModel : this.geminiModel;
   }
 
@@ -333,24 +466,50 @@ export class LLMHelper {
   }
 
   public async switchToGemini(apiKey?: string, model?: string): Promise<void> {
-    if (apiKey) {
-      this.model = new GoogleGenAI({ apiKey });
-    }
-    
-    if (!this.model && !apiKey) {
+    const resolvedKey = (apiKey ?? "").trim() || this.geminiApiKey || process.env.GEMINI_API_KEY?.trim();
+    if (!resolvedKey) {
       throw new Error("No Gemini API key provided and no existing model instance");
     }
     
+    if (!this.model || apiKey) {
+      this.model = new GoogleGenAI({ apiKey: resolvedKey });
+    }
+    this.geminiApiKey = resolvedKey;
+    
     this.useOllama = false;
+    this.useOpenRouter = false;
     if (model) {
       this.geminiModel = model;
     }
     console.log("[LLMHelper] Switched to Gemini");
   }
 
+  public async switchToOpenRouter(apiKey: string, model?: string): Promise<void> {
+    const resolvedKey = (apiKey ?? "").trim() || this.openRouterApiKey;
+    if (!resolvedKey) {
+      throw new Error("OpenRouter API key is required");
+    }
+
+    this.openRouterApiKey = resolvedKey;
+    if (model) {
+      this.openRouterModel = model;
+    }
+    
+    this.useOllama = false;
+    this.useOpenRouter = true;
+    console.log(`[LLMHelper] Switched to OpenRouter: ${this.openRouterModel}`);
+  }
+
   public async testConnection(): Promise<{ success: boolean; error?: string }> {
     try {
-      if (this.useOllama) {
+      if (this.useOpenRouter) {
+        if (!this.openRouterApiKey) {
+          return { success: false, error: "No OpenRouter API key configured" };
+        }
+        // Test with a simple prompt
+        await this.callOpenRouter("Hello");
+        return { success: true };
+      } else if (this.useOllama) {
         const available = await this.checkOllamaAvailable();
         if (!available) {
           return { success: false, error: `Ollama not available at ${this.ollamaUrl}` };

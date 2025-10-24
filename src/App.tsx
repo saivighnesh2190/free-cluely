@@ -50,10 +50,11 @@ declare global {
       quitApp: () => Promise<void>
       
       // LLM Model Management
-      getCurrentLlmConfig: () => Promise<{ provider: "ollama" | "gemini"; model: string; isOllama: boolean }>
+      getCurrentLlmConfig: () => Promise<{ provider: "ollama" | "gemini" | "openrouter"; model: string; isOllama: boolean }>
       getAvailableOllamaModels: () => Promise<string[]>
       switchToOllama: (model?: string, url?: string) => Promise<{ success: boolean; error?: string }>
-      switchToGemini: (apiKey?: string) => Promise<{ success: boolean; error?: string }>
+      switchToGemini: (apiKey?: string, model?: string) => Promise<{ success: boolean; error?: string }>
+      switchToOpenRouter: (apiKey: string, model?: string) => Promise<{ success: boolean; error?: string }>
       testLlmConnection: () => Promise<{ success: boolean; error?: string }>
       
       invoke: (channel: string, ...args: any[]) => Promise<any>
