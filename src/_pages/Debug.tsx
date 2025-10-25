@@ -14,6 +14,7 @@ import {
 } from "../components/ui/toast"
 import ExtraScreenshotsQueueHelper from "../components/Solutions/SolutionCommands"
 import { diffLines } from "diff"
+import { useAppearance } from "../context/AppearanceContext"
 
 type DiffLine = {
   value: string
@@ -204,6 +205,7 @@ interface DebugProps {
 const Debug: React.FC<DebugProps> = ({ isProcessing, setIsProcessing }) => {
   const queryClient = useQueryClient()
   const contentRef = useRef<HTMLDivElement>(null)
+  const { appearance } = useAppearance()
 
   const [oldCode, setOldCode] = useState<string | null>(null)
   const [newCode, setNewCode] = useState<string | null>(null)
@@ -393,6 +395,7 @@ const Debug: React.FC<DebugProps> = ({ isProcessing, setIsProcessing }) => {
                 )
               }
               isLoading={!thoughtsData}
+              appearance={appearance}
             />
 
             {/* Code Comparison Section */}
@@ -407,6 +410,7 @@ const Debug: React.FC<DebugProps> = ({ isProcessing, setIsProcessing }) => {
               timeComplexity={timeComplexityData}
               spaceComplexity={spaceComplexityData}
               isLoading={!timeComplexityData || !spaceComplexityData}
+              appearance={appearance}
             />
           </div>
         </div>

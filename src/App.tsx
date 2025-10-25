@@ -4,65 +4,7 @@ import { ToastViewport } from "@radix-ui/react-toast"
 import { useEffect, useRef, useState } from "react"
 import Solutions from "./_pages/Solutions"
 import { QueryClient, QueryClientProvider } from "react-query"
-
-declare global {
-  interface Window {
-    electronAPI: {
-      //RANDOM GETTER/SETTERS
-      updateContentDimensions: (dimensions: {
-        width: number
-        height: number
-      }) => Promise<void>
-      getScreenshots: () => Promise<Array<{ path: string; preview: string; question?: string }>>
-
-      //GLOBAL EVENTS
-      //TODO: CHECK THAT PROCESSING NO SCREENSHOTS AND TAKE SCREENSHOTS ARE BOTH CONDITIONAL
-      onUnauthorized: (callback: () => void) => () => void
-      onScreenshotTaken: (
-        callback: (data: { path: string; preview: string; question?: string }) => void
-      ) => () => void
-      onProcessingNoScreenshots: (callback: () => void) => () => void
-      onResetView: (callback: () => void) => () => void
-      takeScreenshot: () => Promise<void>
-
-      //INITIAL SOLUTION EVENTS
-      deleteScreenshot: (
-        path: string
-      ) => Promise<{ success: boolean; error?: string }>
-      onSolutionStart: (callback: () => void) => () => void
-      onSolutionError: (callback: (error: string) => void) => () => void
-      onSolutionSuccess: (callback: (data: any) => void) => () => void
-      onProblemExtracted: (callback: (data: any) => void) => () => void
-
-      onDebugSuccess: (callback: (data: any) => void) => () => void
-
-      onDebugStart: (callback: () => void) => () => void
-      onDebugError: (callback: (error: string) => void) => () => void
-
-      // Audio Processing
-      analyzeAudioFromBase64: (data: string, mimeType: string) => Promise<{ text: string; timestamp: number }>
-      analyzeAudioFile: (path: string) => Promise<{ text: string; timestamp: number }>
-      analyzeImageFile: (path: string, question?: string) => Promise<{ text: string; timestamp: number }>
-      setScreenshotQuestion: (path: string, question: string) => Promise<{ success: boolean; error?: string }>
-
-      moveWindowLeft: () => Promise<void>
-      moveWindowRight: () => Promise<void>
-      moveWindowUp: () => Promise<void>
-      moveWindowDown: () => Promise<void>
-      quitApp: () => Promise<void>
-      
-      // LLM Model Management
-      getCurrentLlmConfig: () => Promise<{ provider: "ollama" | "gemini" | "openrouter"; model: string; isOllama: boolean }>
-      getAvailableOllamaModels: () => Promise<string[]>
-      switchToOllama: (model?: string, url?: string) => Promise<{ success: boolean; error?: string }>
-      switchToGemini: (apiKey?: string, model?: string) => Promise<{ success: boolean; error?: string }>
-      switchToOpenRouter: (apiKey: string, model?: string) => Promise<{ success: boolean; error?: string }>
-      testLlmConnection: () => Promise<{ success: boolean; error?: string }>
-      
-      invoke: (channel: string, ...args: any[]) => Promise<any>
-    }
-  }
-}
+import { AppearanceProvider, useAppearance } from "./context/AppearanceContext"
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -73,9 +15,10 @@ const queryClient = new QueryClient({
   }
 })
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [view, setView] = useState<"queue" | "solutions" | "debug">("queue")
   const containerRef = useRef<HTMLDivElement>(null)
+  const { appearance } = useAppearance()
 
   // Effect for height monitoring
   useEffect(() => {
@@ -166,8 +109,10 @@ const App: React.FC = () => {
     return () => cleanupFunctions.forEach((cleanup) => cleanup())
   }, [])
 
+  const appearanceClass = appearance === "black" ? "bg-black text-white" : "bg-transparent text-white"
+
   return (
-    <div ref={containerRef} className="min-h-0">
+    <div ref={containerRef} className={`min-h-0 ${appearanceClass}`}>
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
           {view === "queue" ? (
@@ -183,5 +128,11 @@ const App: React.FC = () => {
     </div>
   )
 }
+
+const App: React.FC = () => (
+  <AppearanceProvider>
+    <AppContent />
+  </AppearanceProvider>
+)
 
 export default App

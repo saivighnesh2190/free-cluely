@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from "react"
 import { useQuery, useQueryClient } from "react-query"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
-import { dracula } from "react-syntax-highlighter/dist/esm/styles/prism"
+import { dracula, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism"
 
 import ScreenshotQueue from "../components/Queue/ScreenshotQueue"
 import {
@@ -16,30 +16,45 @@ import { ProblemStatementData } from "../types/solutions"
 import { AudioResult } from "../types/audio"
 import SolutionCommands from "../components/Solutions/SolutionCommands"
 import Debug from "./Debug"
+import { useAppearance } from "../context/AppearanceContext"
 
 // (Using global ElectronAPI type from src/types/electron.d.ts)
 
 export const ContentSection = ({
   title,
   content,
-  isLoading
+  isLoading,
+  appearance
 }: {
   title: string
   content: React.ReactNode
   isLoading: boolean
+  appearance: "transparent" | "black"
 }) => (
   <div className="space-y-2">
-    <h2 className="text-[13px] font-medium text-white tracking-wide">
+    <h2
+      className={`text-[13px] font-medium tracking-wide ${
+        appearance === "black" ? "text-white" : "text-gray-900"
+      }`}
+    >
       {title}
     </h2>
     {isLoading ? (
       <div className="mt-4 flex">
-        <p className="text-xs bg-gradient-to-r from-gray-300 via-gray-100 to-gray-300 bg-clip-text text-transparent animate-pulse">
+        <p
+          className={`text-xs bg-gradient-to-r from-gray-300 via-gray-100 to-gray-300 bg-clip-text animate-pulse ${
+            appearance === "black" ? "text-transparent" : "text-gray-500"
+          }`}
+        >
           Extracting problem statement...
         </p>
       </div>
     ) : (
-      <div className="text-[13px] leading-[1.4] text-gray-100 max-w-[600px]">
+      <div
+        className={`text-[13px] leading-[1.4] max-w-[600px] ${
+          appearance === "black" ? "text-gray-100" : "text-gray-700"
+        }`}
+      >
         {content}
       </div>
     )}
@@ -48,14 +63,22 @@ export const ContentSection = ({
 const SolutionSection = ({
   title,
   content,
-  isLoading
+  isLoading,
+  appearance,
+  isVoice
 }: {
   title: string
   content: React.ReactNode
   isLoading: boolean
+  appearance: "transparent" | "black"
+  isVoice: boolean
 }) => (
   <div className="space-y-2">
-    <h2 className="text-[13px] font-medium text-white tracking-wide">
+    <h2
+      className={`text-[13px] font-medium tracking-wide ${
+        appearance === "black" ? "text-white" : "text-gray-900"
+      }`}
+    >
       {title}
     </h2>
     {isLoading ? (
@@ -68,21 +91,34 @@ const SolutionSection = ({
       </div>
     ) : (
       <div className="w-full">
-        <SyntaxHighlighter
-          showLineNumbers
-          language="python"
-          style={dracula}
-          customStyle={{
-            maxWidth: "100%",
-            margin: 0,
-            padding: "1rem",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-all"
-          }}
-          wrapLongLines={true}
-        >
-          {content as string}
-        </SyntaxHighlighter>
+        {isVoice ? (
+          <div
+            className={`text-[13px] leading-[1.5] whitespace-pre-wrap rounded-xl px-4 py-3 border ${
+              appearance === "black"
+                ? "bg-white/5 text-gray-100 border-white/15"
+                : "bg-gray-100 text-gray-800 border-gray-200"
+            }`}
+          >
+            {content}
+          </div>
+        ) : (
+          <SyntaxHighlighter
+            showLineNumbers
+            language="python"
+            style={appearance === "black" ? dracula : oneLight}
+            customStyle={{
+              maxWidth: "100%",
+              margin: 0,
+              padding: "1rem",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              borderRadius: "0.75rem"
+            }}
+            wrapLongLines={true}
+          >
+            {content as string}
+          </SyntaxHighlighter>
+        )}
       </div>
     )}
   </div>
@@ -91,14 +127,20 @@ const SolutionSection = ({
 export const ComplexitySection = ({
   timeComplexity,
   spaceComplexity,
-  isLoading
+  isLoading,
+  appearance
 }: {
   timeComplexity: string | null
   spaceComplexity: string | null
   isLoading: boolean
+  appearance: "transparent" | "black"
 }) => (
   <div className="space-y-2">
-    <h2 className="text-[13px] font-medium text-white tracking-wide">
+    <h2
+      className={`text-[13px] font-medium tracking-wide ${
+        appearance === "black" ? "text-white" : "text-gray-900"
+      }`}
+    >
       Complexity (Updated)
     </h2>
     {isLoading ? (
@@ -107,13 +149,21 @@ export const ComplexitySection = ({
       </p>
     ) : (
       <div className="space-y-1">
-        <div className="flex items-start gap-2 text-[13px] leading-[1.4] text-gray-100">
+        <div
+          className={`flex items-start gap-2 text-[13px] leading-[1.4] ${
+            appearance === "black" ? "text-gray-100" : "text-gray-700"
+          }`}
+        >
           <div className="w-1 h-1 rounded-full bg-blue-400/80 mt-2 shrink-0" />
           <div>
             <strong>Time:</strong> {timeComplexity}
           </div>
         </div>
-        <div className="flex items-start gap-2 text-[13px] leading-[1.4] text-gray-100">
+        <div
+          className={`flex items-start gap-2 text-[13px] leading-[1.4] ${
+            appearance === "black" ? "text-gray-100" : "text-gray-700"
+          }`}
+        >
           <div className="w-1 h-1 rounded-full bg-blue-400/80 mt-2 shrink-0" />
           <div>
             <strong>Space:</strong> {spaceComplexity}
@@ -130,10 +180,7 @@ interface SolutionsProps {
 const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
   const queryClient = useQueryClient()
   const contentRef = useRef<HTMLDivElement>(null)
-
-  // Audio recording state
-  const [audioRecording, setAudioRecording] = useState(false)
-  const [audioResult, setAudioResult] = useState<AudioResult | null>(null)
+  const { appearance } = useAppearance()
 
   const [debugProcessing, setDebugProcessing] = useState(false)
   const [problemStatementData, setProblemStatementData] =
@@ -208,8 +255,9 @@ const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
     // Height update logic
     const updateDimensions = () => {
       if (contentRef.current) {
-        let contentHeight = contentRef.current.scrollHeight
-        const contentWidth = contentRef.current.scrollWidth
+        const rect = contentRef.current.getBoundingClientRect()
+        let contentHeight = rect.height
+        const contentWidth = rect.width
         if (isTooltipVisible) {
           contentHeight += tooltipHeight
         }
@@ -253,42 +301,6 @@ const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
         setTimeComplexityData(null)
         setSpaceComplexityData(null)
         setCustomContent(null)
-        setAudioResult(null)
-
-        // Start audio recording from user's microphone
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-          const mediaRecorder = new MediaRecorder(stream)
-          const chunks: Blob[] = []
-          mediaRecorder.ondataavailable = (e) => chunks.push(e.data)
-          mediaRecorder.start()
-          setAudioRecording(true)
-          // Record for 5 seconds (or adjust as needed)
-          setTimeout(() => mediaRecorder.stop(), 5000)
-          mediaRecorder.onstop = async () => {
-            setAudioRecording(false)
-            const blob = new Blob(chunks, { type: chunks[0]?.type || 'audio/webm' })
-            const reader = new FileReader()
-            reader.onloadend = async () => {
-              const base64Data = (reader.result as string).split(',')[1]
-              // Send audio to Gemini for analysis
-              try {
-                const result = await window.electronAPI.analyzeAudioFromBase64(
-                  base64Data,
-                  blob.type
-                )
-                // Store result in react-query cache
-                queryClient.setQueryData(["audio_result"], result)
-                setAudioResult(result)
-              } catch (err) {
-                console.error('Audio analysis failed:', err)
-              }
-            }
-            reader.readAsDataURL(blob)
-          }
-        } catch (err) {
-          console.error('Audio recording error:', err)
-        }
 
         // Simulate receiving custom content shortly after start
         setTimeout(() => {
@@ -480,21 +492,28 @@ const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
           )}
 
           {/* Navbar of commands with the SolutionsHelper */}
-          <SolutionCommands
-            extraScreenshots={extraScreenshots}
-            onTooltipVisibilityChange={handleTooltipVisibilityChange}
-          />
+      <SolutionCommands
+        extraScreenshots={extraScreenshots}
+        onTooltipVisibilityChange={handleTooltipVisibilityChange}
+      />
 
           {/* Main Content - Modified width constraints */}
-          <div className="w-full text-sm text-black bg-black/60 rounded-md">
+          <div
+            className={`w-full text-sm rounded-md border ${
+              appearance === "black"
+                ? "bg-black/70 text-gray-100 border-white/20"
+                : "bg-white/85 text-gray-800 border-gray-200"
+            }`}
+          >
             <div className="rounded-lg overflow-hidden">
-              <div className="px-4 py-3 space-y-4 max-w-full">
+          <div className="px-4 py-3 space-y-4 max-w-full max-h-[480px] overflow-y-auto pr-2">
                 {/* Show Screenshot or Audio Result as main output if validation_type is manual */}
                 {problemStatementData?.validation_type === "manual" ? (
                   <ContentSection
                     title={problemStatementData?.output_format?.subtype === "voice" ? "Audio Result" : "Screenshot Result"}
                     content={problemStatementData.problem_statement}
                     isLoading={false}
+                    appearance={appearance}
                   />
                 ) : (
                   <>
@@ -503,6 +522,7 @@ const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
                       title={problemStatementData?.output_format?.subtype === "voice" ? "Voice Input" : "Problem Statement"}
                       content={problemStatementData?.problem_statement}
                       isLoading={!problemStatementData}
+                      appearance={appearance}
                     />
                     {/* Show loading state when waiting for solution */}
                     {problemStatementData && !solutionData && (
@@ -537,17 +557,21 @@ const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
                             )
                           }
                           isLoading={!thoughtsData}
+                          appearance={appearance}
                         />
                         <SolutionSection
                           title={problemStatementData?.output_format?.subtype === "voice" ? "Response" : "Solution"}
                           content={solutionData}
                           isLoading={!solutionData}
+                          appearance={appearance}
+                          isVoice={problemStatementData?.output_format?.subtype === "voice"}
                         />
                         {problemStatementData?.output_format?.subtype !== "voice" && (
                           <ComplexitySection
                             timeComplexity={timeComplexityData}
                             spaceComplexity={spaceComplexityData}
                             isLoading={!timeComplexityData || !spaceComplexityData}
+                            appearance={appearance}
                           />
                         )}
                       </>

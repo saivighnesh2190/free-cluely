@@ -1,27 +1,31 @@
 import React, { useState, useEffect, useRef } from "react"
 import { IoLogOutOutline } from "react-icons/io5"
-import { Dialog, DialogContent, DialogClose } from "../ui/dialog"
+import { useAppearance } from "../../context/AppearanceContext"
 
 interface QueueCommandsProps {
   onTooltipVisibilityChange: (visible: boolean, height: number) => void
   screenshots: Array<{ path: string; preview: string }>
   onChatToggle: () => void
   onSettingsToggle: () => void
+  onVoiceRecordToggle: () => void
+  isRecording: boolean
+  isProcessingVoice: boolean
+  voiceTranscript: string | null
 }
 
 const QueueCommands: React.FC<QueueCommandsProps> = ({
   onTooltipVisibilityChange,
   screenshots,
   onChatToggle,
-  onSettingsToggle
+  onSettingsToggle,
+  onVoiceRecordToggle,
+  isRecording,
+  isProcessingVoice,
+  voiceTranscript
 }) => {
+  const { appearance, toggleAppearance } = useAppearance()
   const [isTooltipVisible, setIsTooltipVisible] = useState(false)
   const tooltipRef = useRef<HTMLDivElement>(null)
-  const [isRecording, setIsRecording] = useState(false)
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
-  const [audioResult, setAudioResult] = useState<string | null>(null)
-  const chunks = useRef<Blob[]>([])
-  // Remove all chat-related state, handlers, and the Dialog overlay from this file.
 
   useEffect(() => {
     let tooltipHeight = 0
@@ -38,44 +42,6 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
   const handleMouseLeave = () => {
     setIsTooltipVisible(false)
   }
-
-  const handleRecordClick = async () => {
-    if (!isRecording) {
-      // Start recording
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        const recorder = new MediaRecorder(stream)
-        recorder.ondataavailable = (e) => chunks.current.push(e.data)
-        recorder.onstop = async () => {
-          const blob = new Blob(chunks.current, { type: chunks.current[0]?.type || 'audio/webm' })
-          chunks.current = []
-          const reader = new FileReader()
-          reader.onloadend = async () => {
-            const base64Data = (reader.result as string).split(',')[1]
-            try {
-              const result = await window.electronAPI.analyzeAudioFromBase64(base64Data, blob.type)
-              setAudioResult(result.text)
-            } catch (err) {
-              setAudioResult('Audio analysis failed.')
-            }
-          }
-          reader.readAsDataURL(blob)
-        }
-        setMediaRecorder(recorder)
-        recorder.start()
-        setIsRecording(true)
-      } catch (err) {
-        setAudioResult('Could not start recording.')
-      }
-    } else {
-      // Stop recording
-      mediaRecorder?.stop()
-      setIsRecording(false)
-      setMediaRecorder(null)
-    }
-  }
-
-  // Remove handleChatSend function
 
   return (
     <div className="w-fit">
@@ -114,12 +80,15 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
         {/* Voice Recording Button */}
         <div className="flex items-center gap-2">
           <button
-            className={`bg-white/10 hover:bg-white/20 transition-colors rounded-md px-2 py-1 text-[11px] leading-none text-white/70 flex items-center gap-1 ${isRecording ? 'bg-red-500/70 hover:bg-red-500/90' : ''}`}
-            onClick={handleRecordClick}
+            className={`bg-white/10 hover:bg-white/20 transition-colors rounded-md px-2 py-1 text-[11px] leading-none text-white/70 flex items-center gap-1 ${isRecording ? 'bg-red-500/70 hover:bg-red-500/90' : ''} ${isProcessingVoice ? 'opacity-70 cursor-wait' : ''}`}
+            onClick={onVoiceRecordToggle}
             type="button"
+            disabled={isProcessingVoice}
           >
             {isRecording ? (
               <span className="animate-pulse">● Stop Recording</span>
+            ) : isProcessingVoice ? (
+              <span>⏳ Processing...</span>
             ) : (
               <span>🎤 Record Voice</span>
             )}
@@ -148,8 +117,16 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
           </button>
         </div>
 
-        {/* Add this button in the main button row, before the separator and sign out */}
-        {/* Remove the Chat button */}
+        {/* Appearance Toggle */}
+        <div className="flex items-center gap-2">
+          <button
+            className="bg-white/10 hover:bg-white/20 transition-colors rounded-md px-2 py-1 text-[11px] leading-none text-white/70 flex items-center gap-1"
+            onClick={toggleAppearance}
+            type="button"
+          >
+            🎨 {appearance === "black" ? "Transparent" : "Black"}
+          </button>
+        </div>
 
         {/* Question mark with tooltip */}
         <div
@@ -245,9 +222,9 @@ const QueueCommands: React.FC<QueueCommandsProps> = ({
         </button>
       </div>
       {/* Audio Result Display */}
-      {audioResult && (
-        <div className="mt-2 p-2 bg-white/10 rounded text-white text-xs max-w-md">
-          <span className="font-semibold">Audio Result:</span> {audioResult}
+      {voiceTranscript && (
+        <div className={`mt-2 p-2 rounded text-xs max-w-md ${appearance === "black" ? "bg-white/10 text-white" : "bg-gray-900/5 text-gray-800"}`}>
+          <span className="font-semibold">Audio Result:</span> {voiceTranscript}
         </div>
       )}
       {/* Chat Dialog Overlay */}

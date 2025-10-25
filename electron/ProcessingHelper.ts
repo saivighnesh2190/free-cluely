@@ -2,6 +2,7 @@ import { AppState } from "./main"
 import { LLMHelper } from "./LLMHelper"
 import dotenv from "dotenv"
 import path from "path"
+import fs from "fs"
 
 // Load environment variables from .env file
 dotenv.config({ path: path.join(process.cwd(), '.env') })
@@ -26,7 +27,7 @@ export class ProcessingHelper {
     
     // Check for OpenRouter API key (prioritize this)
     const openRouterApiKey = process.env.OPENROUTER_API_KEY
-    const openRouterModel = process.env.OPENROUTER_MODEL || "qwen/qwen3-coder:free"
+    const openRouterModel = process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash"
     
     if (useOllama) {
       console.log("[ProcessingHelper] Initializing with Ollama")
@@ -64,9 +65,10 @@ export class ProcessingHelper {
         mainWindow.webContents.send(this.appState.PROCESSING_EVENTS.INITIAL_START);
         this.appState.setView('solutions');
         try {
-          const audioResult = await this.llmHelper.analyzeAudioFile(lastPath);
-          mainWindow.webContents.send(this.appState.PROCESSING_EVENTS.PROBLEM_EXTRACTED, audioResult);
-          this.appState.setProblemInfo({ problem_statement: audioResult.text, input_format: {}, output_format: {}, constraints: [], test_cases: [] });
+          const audioBuffer = await fs.promises.readFile(lastPath)
+          const extension = path.extname(lastPath).toLowerCase()
+          const mimeType = extension === '.wav' ? 'audio/wav' : 'audio/mpeg'
+          await this.processVoiceRecording(audioBuffer.toString('base64'), mimeType)
           return;
         } catch (err: any) {
           console.error('Audio processing error:', err);
@@ -161,6 +163,83 @@ export class ProcessingHelper {
     }
 
     this.appState.setHasDebugged(false)
+  }
+
+  public async processVoiceRecording(data: string, mimeType: string) {
+    const mainWindow = this.appState.getMainWindow()
+    if (!mainWindow) {
+      throw new Error("No main window available")
+    }
+
+    mainWindow.webContents.send(this.appState.PROCESSING_EVENTS.INITIAL_START)
+    this.appState.setView("solutions")
+
+    try {
+      const transcriptResult = await this.llmHelper.analyzeAudioFromBase64(data, mimeType)
+      const interpretation = await this.llmHelper.interpretVoiceTranscript(transcriptResult.text)
+      const voiceAnswer = await this.llmHelper.generateVoiceResponse(transcriptResult.text, interpretation)
+
+      const problemInfo = {
+        problem_statement: interpretation.problem_statement || transcriptResult.text,
+        input_format: {
+          description: interpretation.context || "Derived from voice input",
+          parameters: (interpretation.key_requirements || []).map((requirement: string, index: number) => ({
+            name: `requirement_${index + 1}`,
+            description: requirement
+          }))
+        },
+        output_format: {
+          description:
+            interpretation.expected_outcome ||
+            "Deliver the outcome requested in the spoken input.",
+          type: "string",
+          subtype: "voice"
+        },
+        complexity: {
+          time: "N/A",
+          space: "N/A"
+        },
+        test_cases: [] as any[],
+        validation_type: "voice",
+        difficulty: "custom",
+        meta: {
+          transcript: transcriptResult.text,
+          key_requirements: interpretation.key_requirements || [],
+          clarifications_needed: interpretation.clarifications_needed || [],
+          reasoning: interpretation.reasoning || "",
+          suggested_responses: interpretation.suggested_responses || []
+        }
+      }
+
+      this.appState.setProblemInfo(problemInfo)
+      mainWindow.webContents.send(this.appState.PROCESSING_EVENTS.PROBLEM_EXTRACTED, problemInfo)
+
+      const solutionPayload = {
+        solution: {
+          code: voiceAnswer,
+          thoughts: interpretation.suggested_responses || [],
+          time_complexity: "N/A",
+          space_complexity: "N/A"
+        }
+      }
+
+      mainWindow.webContents.send(this.appState.PROCESSING_EVENTS.SOLUTION_SUCCESS, solutionPayload)
+
+      return {
+        transcript: transcriptResult.text,
+        interpretation,
+        problemInfo,
+        solution: solutionPayload,
+        answer: voiceAnswer
+      }
+    } catch (error: any) {
+      console.error("Voice processing error:", error)
+      mainWindow.webContents.send(
+        this.appState.PROCESSING_EVENTS.INITIAL_SOLUTION_ERROR,
+        error?.message || String(error)
+      )
+      throw error
+    }
   }
 
   public async processAudioBase64(data: string, mimeType: string) {

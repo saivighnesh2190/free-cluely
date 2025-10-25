@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogClose } from "./dialog"
 import { X } from "lucide-react"
+import { useAppearance } from "../../context/AppearanceContext"
 
 interface ScreenshotQuestionDialogProps {
   screenshot: { path: string; preview: string } | null
@@ -14,12 +15,16 @@ const ScreenshotQuestionDialog: React.FC<ScreenshotQuestionDialogProps> = ({
   onCancel
 }) => {
   const [question, setQuestion] = useState("")
+  const { appearance, setAppearance } = useAppearance()
 
   useEffect(() => {
     if (screenshot) {
       setQuestion("")
     }
   }, [screenshot?.path])
+  const dialogAppearanceClass = appearance === "black"
+    ? "bg-black text-white border-white/20"
+    : "bg-zinc-900/95 text-white border-white/10"
 
   const handleSubmit = () => {
     onSubmit(question.trim())
@@ -36,7 +41,7 @@ const ScreenshotQuestionDialog: React.FC<ScreenshotQuestionDialogProps> = ({
         handleCancel()
       }
     }}>
-      <DialogContent className="max-w-md w-full bg-zinc-900/95 border border-white/10 text-white shadow-2xl">
+      <DialogContent className={`max-w-md w-full shadow-2xl ${dialogAppearanceClass}`}>
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -62,6 +67,34 @@ const ScreenshotQuestionDialog: React.FC<ScreenshotQuestionDialogProps> = ({
               <img src={screenshot.preview} alt="Screenshot preview" className="w-full h-auto" />
             </div>
           )}
+
+          <div className="flex flex-col gap-2">
+            <span className="text-xs uppercase tracking-wide text-zinc-400">Appearance</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setAppearance("transparent")}
+                className={`flex-1 rounded-md px-3 py-2 text-sm border transition-colors ${
+                  appearance === "transparent"
+                    ? "bg-white/15 border-white"
+                    : "bg-white/5 border-white/20 hover:bg-white/10"
+                }`}
+              >
+                Transparent
+              </button>
+              <button
+                type="button"
+                onClick={() => setAppearance("black")}
+                className={`flex-1 rounded-md px-3 py-2 text-sm border transition-colors ${
+                  appearance === "black"
+                    ? "bg-white text-black"
+                    : "bg-white/5 border-white/20 hover:bg-white/10"
+                }`}
+              >
+                Black
+              </button>
+            </div>
+          </div>
 
           <div>
             <label htmlFor="screenshot-question" className="text-xs uppercase tracking-wide text-zinc-400">

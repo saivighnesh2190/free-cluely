@@ -33,6 +33,7 @@ interface ElectronAPI {
   analyzeAudioFromBase64: (data: string, mimeType: string) => Promise<{ text: string; timestamp: number }>
   analyzeAudioFile: (path: string) => Promise<{ text: string; timestamp: number }>
   analyzeImageFile: (path: string, question?: string) => Promise<{ text: string; timestamp: number }>
+  processVoiceRecording: (data: string, mimeType: string) => Promise<{ transcript: string; interpretation: any; problemInfo: any; solution: any }>
   quitApp: () => Promise<void>
   setScreenshotQuestion: (path: string, question: string) => Promise<{ success: boolean; error?: string }>
   
@@ -180,6 +181,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   analyzeAudioFromBase64: (data: string, mimeType: string) => ipcRenderer.invoke("analyze-audio-base64", data, mimeType),
   analyzeAudioFile: (path: string) => ipcRenderer.invoke("analyze-audio-file", path),
   analyzeImageFile: (path: string, question?: string) => ipcRenderer.invoke("analyze-image-file", path, question),
+  processVoiceRecording: (data: string, mimeType: string) => ipcRenderer.invoke("process-voice-recording", data, mimeType),
   quitApp: () => ipcRenderer.invoke("quit-app"),
   setScreenshotQuestion: (path: string, question: string) => ipcRenderer.invoke("set-screenshot-question", path, question),
   

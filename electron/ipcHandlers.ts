@@ -83,6 +83,15 @@ export function initializeIpcHandlers(appState: AppState): void {
     }
   })
 
+  ipcMain.handle("process-voice-recording", async (_event, data: string, mimeType: string) => {
+    try {
+      return await appState.processingHelper.processVoiceRecording(data, mimeType)
+    } catch (error: any) {
+      console.error("Error in process-voice-recording handler:", error)
+      throw error
+    }
+  })
+
   // IPC handler for analyzing audio from file path
   ipcMain.handle("analyze-audio-file", async (event, path: string) => {
     try {

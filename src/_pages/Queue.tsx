@@ -11,6 +11,8 @@ import {
 import QueueCommands from "../components/Queue/QueueCommands"
 import ModelSelector from "../components/ui/ModelSelector"
 import ScreenshotQuestionDialog from "../components/ui/ScreenshotQuestionDialog"
+import { useAppearance } from "../context/AppearanceContext"
+import type { ElectronAPI } from "../types/electron"
 
 interface QueueProps {
   setView: React.Dispatch<React.SetStateAction<"queue" | "solutions" | "debug">>
@@ -23,6 +25,7 @@ interface ScreenshotItemData {
 }
 
 const Queue: React.FC<QueueProps> = ({ setView }) => {
+  const { appearance } = useAppearance()
   const [toastOpen, setToastOpen] = useState(false)
   const [toastMessage, setToastMessage] = useState<ToastMessage>({
     title: "",
@@ -42,6 +45,12 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [currentModel, setCurrentModel] = useState<{ provider: string; model: string }>({ provider: "gemini", model: "gemini-2.0-flash" })
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const voiceChunksRef = useRef<Blob[]>([])
+  const [isVoiceRecording, setIsVoiceRecording] = useState(false)
+  const [isVoiceProcessing, setIsVoiceProcessing] = useState(false)
+  const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null)
 
   const barRef = useRef<HTMLDivElement>(null)
   const queryClient = useQueryClient()
@@ -185,6 +194,192 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
     };
   }, [refetch]);
 
+  const escapeHtml = (str: string) =>
+    str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;")
+
+  const renderInlineMath = (expression: string, allowExtendedOperators = true) => {
+    let result = escapeHtml(expression.trim())
+
+    const symbolReplacements: Array<[RegExp, string]> = [
+      [/\\rightarrow/g, "&rarr;"],
+      [/\\to/g, "&rarr;"],
+      [/\\Rightarrow/g, "&rArr;"],
+      [/\\leftarrow/g, "&larr;"],
+      [/\\leftrightarrow/g, "&harr;"],
+      [/\\geq/g, "&ge;"],
+      [/\\leq/g, "&le;"],
+      [/\\neq/g, "&ne;"],
+      [/\\ne/g, "&ne;"],
+      [/\\approx/g, "&asymp;"],
+      [/\\sim/g, "&sim;"],
+      [/\\times/g, "&times;"],
+      [/\\cdot/g, "&middot;"],
+      [/\\pm/g, "&plusmn;"],
+      [/\\alpha/g, "&alpha;"],
+      [/\\beta/g, "&beta;"],
+      [/\\gamma/g, "&gamma;"],
+      [/\\delta/g, "&delta;"],
+      [/\\epsilon/g, "&epsilon;"],
+      [/\\lambda/g, "&lambda;"],
+      [/\\mu/g, "&mu;"],
+      [/\\pi/g, "&pi;"],
+      [/\\sigma/g, "&sigma;"],
+      [/\\theta/g, "&theta;"],
+      [/\\phi/g, "&phi;"],
+      [/\\Phi/g, "&Phi;"],
+      [/\\psi/g, "&psi;"],
+      [/\\Psi/g, "&Psi;"],
+      [/\\omega/g, "&omega;"],
+      [/\\Omega/g, "&Omega;"],
+      [/\\_/g, "_"],
+      [/\\text\{([^}]*)\}/g, "$1"],
+      [/\\,/g, "&thinsp;"]
+    ]
+
+    symbolReplacements.forEach(([pattern, replacement]) => {
+      result = result.replace(pattern, replacement)
+    })
+
+    result = result
+      .replace(/_\{([^}]*)\}/g, "<sub>$1</sub>")
+      .replace(/_([a-zA-Z0-9])/g, "<sub>$1</sub>")
+      .replace(/\^\{([^}]*)\}/g, "<sup>$1</sup>")
+      .replace(/\^([a-zA-Z0-9])/g, "<sup>$1</sup>")
+
+    if (allowExtendedOperators) {
+      result = result.replace(/\\xrightarrow\{([^}]*)\}/g, (_, label: string) => {
+        const inner = renderInlineMath(label, false)
+          .replace(/^<span class="math-inline">/, "")
+          .replace(/<\/span>$/, "")
+        return `<span class="math-arrow">${inner}&rarr;</span>`
+      })
+
+      result = result.replace(/\\xleftarrow\{([^}]*)\}/g, (_, label: string) => {
+        const inner = renderInlineMath(label, false)
+          .replace(/^<span class="math-inline">/, "")
+          .replace(/<\/span>$/, "")
+        return `<span class="math-arrow">&larr;${inner}</span>`
+      })
+    }
+
+    return `<span class="math-inline">${result}</span>`
+  }
+
+  const convertLists = (input: string) => {
+    const lines = input.split("\n")
+    const output: string[] = []
+    let currentList: "ul" | "ol" | null = null
+
+    const closeList = () => {
+      if (currentList) {
+        output.push(currentList === "ul" ? "</ul>" : "</ol>")
+        currentList = null
+      }
+    }
+
+    for (const line of lines) {
+      if (/^\s*[-*+]\s+/.test(line)) {
+        if (currentList !== "ul") {
+          closeList()
+          output.push('<ul class="chat-list">')
+          currentList = "ul"
+        }
+        const item = line.replace(/^\s*[-*+]\s+/, "")
+        output.push(`<li>${item}</li>`)
+      } else if (/^\s*\d+\.\s+/.test(line)) {
+        if (currentList !== "ol") {
+          closeList()
+          output.push('<ol class="chat-list">')
+          currentList = "ol"
+        }
+        const item = line.replace(/^\s*\d+\.\s+/, "")
+        output.push(`<li>${item}</li>`)
+      } else {
+        closeList()
+        output.push(line)
+      }
+    }
+
+    closeList()
+    return output.join("\n")
+  }
+
+  const formatMessageToHtml = (text: string) => {
+    const codeBlocks: Array<{ lang: string; content: string }> = []
+    const mathBlocks: string[] = []
+    const inlineMath: string[] = []
+
+    let processed = text.replace(/```(\w+)?\n([\s\S]*?)```/g, (_, lang = "", content: string) => {
+      const index = codeBlocks.push({ lang: lang.trim() || "text", content }) - 1
+      return `@@CODE_BLOCK_${index}@@`
+    })
+
+    processed = processed.replace(/\$\$([\s\S]+?)\$\$/g, (_, expr: string) => {
+      const index = mathBlocks.push(expr) - 1
+      return `@@MATH_BLOCK_${index}@@`
+    })
+
+    processed = processed.replace(/\$(.+?)\$/g, (_, expr: string) => {
+      const index = inlineMath.push(expr) - 1
+      return `@@INLINE_MATH_${index}@@`
+    })
+
+    let html = escapeHtml(processed)
+
+    html = html.replace(/^#{3}\s*(.*)$/gm, '<strong class="chat-heading">$1</strong>')
+    html = html.replace(/^#{2}\s*(.*)$/gm, '<strong class="chat-heading">$1</strong>')
+
+    html = convertLists(html)
+
+    html = html
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/__(.*?)__/g, '<strong>$1</strong>')
+      .replace(/`([^`]+)`/g, '<code class="chat-inline-code">$1</code>')
+
+    html = html
+      .replace(/\n{2,}/g, "<br /><br />")
+      .replace(/\n/g, "<br />")
+
+    html = html
+      .replace(/<ul class="chat-list">\s*<br \/>/g, '<ul class="chat-list">')
+      .replace(/<ol class="chat-list">\s*<br \/>/g, '<ol class="chat-list">')
+      .replace(/<\/li>\s*<br \/>/g, '</li>')
+      .replace(/<\/ul>\s*<br \/>/g, '</ul>')
+      .replace(/<\/ol>\s*<br \/>/g, '</ol>')
+
+    html = html.replace(/@@MATH_BLOCK_(\d+)@@/g, (_, idxStr: string) => {
+      const expr = mathBlocks[Number(idxStr)] || ""
+      const escapedExpr = escapeHtml(expr)
+      return `<div class="math-block">${renderInlineMath(escapedExpr)}</div>`
+    })
+
+    html = html.replace(/@@CODE_BLOCK_(\d+)@@/g, (_, idxStr: string) => {
+      const block = codeBlocks[Number(idxStr)]
+      if (!block) return ""
+      const escapedContent = escapeHtml(block.content)
+      const langAttr = block.lang ? ` data-lang="${block.lang}"` : ""
+      return `<pre class="chat-code-block"${langAttr}><code>${escapedContent}</code></pre>`
+    })
+
+    html = html.replace(/@@INLINE_MATH_(\d+)@@/g, (_, idxStr: string) => {
+      const expr = inlineMath[Number(idxStr)] || ""
+      return renderInlineMath(expr)
+    })
+
+    html = html
+      .replace(/<br \/>\s*(?=<pre class="chat-code-block")/g, "")
+      .replace(/(<\/pre>)<br \/>*/g, "$1")
+      .replace(/<br \/>\s*(?=<div class="math-block")/g, "")
+      .replace(/(<\/div>)<br \/>*/g, "$1")
+
+    return html
+  }
+
   const analyzeScreenshot = async (path: string, question?: string) => {
     setChatLoading(true)
     try {
@@ -243,6 +438,117 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
     }])
   }
 
+  const stopActiveStream = () => {
+    const tracks = mediaRecorderRef.current?.stream.getTracks() || []
+    tracks.forEach((track) => track.stop())
+  }
+
+  const processVoiceRecording = async (blob: Blob) => {
+    setIsVoiceProcessing(true)
+    if (blob.size === 0) {
+      showToast("Audio Error", "No audio captured. Please try again.", "error")
+      setIsVoiceProcessing(false)
+      return
+    }
+
+    try {
+      const reader = new FileReader()
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        reader.onloadend = () => {
+          const result = reader.result as string | null
+          if (!result) {
+            reject(new Error("Failed to read audio data"))
+            return
+          }
+          const payload = result.split(",")[1]
+          if (!payload) {
+            reject(new Error("Invalid audio data"))
+            return
+          }
+          resolve(payload)
+        }
+        reader.onerror = () => reject(reader.error || new Error("Failed to read audio data"))
+        reader.readAsDataURL(blob)
+      })
+
+      const result: Awaited<ReturnType<ElectronAPI["processVoiceRecording"]>> =
+        await window.electronAPI.processVoiceRecording(base64Data, blob.type || "audio/webm")
+      setVoiceTranscript(result?.transcript || null)
+      if (result?.transcript) {
+        queryClient.setQueryData(["audio_result"], {
+          text: result.transcript,
+          timestamp: Date.now()
+        })
+      }
+      showToast("Audio Captured", "Generating answer from your voice input.", "neutral")
+    } catch (error) {
+      console.error("Error processing audio:", error)
+      showToast("Audio Error", "Failed to analyze audio input.", "error")
+    } finally {
+      setIsVoiceProcessing(false)
+    }
+  }
+
+  const handleVoiceRecordToggle = async () => {
+    if (isVoiceProcessing) return
+
+    if (isVoiceRecording) {
+      mediaRecorderRef.current?.stop()
+      setIsVoiceRecording(false)
+      return
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      mediaRecorderRef.current = recorder
+      voiceChunksRef.current = []
+      setVoiceTranscript(null)
+
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) {
+          voiceChunksRef.current.push(event.data)
+        }
+      }
+
+      recorder.onerror = (event) => {
+        console.error("MediaRecorder error:", event)
+        showToast("Recording Error", "An error occurred while recording audio.", "error")
+        setIsVoiceRecording(false)
+        stopActiveStream()
+      }
+
+      recorder.onstop = async () => {
+        stopActiveStream()
+        mediaRecorderRef.current = null
+        const combined = new Blob(voiceChunksRef.current, { type: voiceChunksRef.current[0]?.type || "audio/webm" })
+        voiceChunksRef.current = []
+        await processVoiceRecording(combined)
+      }
+
+      recorder.start()
+      setIsVoiceRecording(true)
+    } catch (error: any) {
+      console.error("Microphone access error:", error)
+      if (error?.name === "NotAllowedError" || error?.name === "NotFoundError") {
+        showToast("Microphone Error", "Microphone access is required to record audio.", "error")
+      } else {
+        showToast("Microphone Error", "Could not start audio recording.", "error")
+      }
+      stopActiveStream()
+      mediaRecorderRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current?.state === "recording") {
+        mediaRecorderRef.current.stop()
+      }
+      stopActiveStream()
+    }
+  }, [])
+
 
   return (
     <div
@@ -271,6 +577,10 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
               onTooltipVisibilityChange={handleTooltipVisibilityChange}
               onChatToggle={handleChatToggle}
               onSettingsToggle={handleSettingsToggle}
+              onVoiceRecordToggle={handleVoiceRecordToggle}
+              isRecording={isVoiceRecording}
+              isProcessingVoice={isVoiceProcessing}
+              voiceTranscript={voiceTranscript}
             />
           </div>
           {/* Conditional Settings Interface */}
@@ -285,12 +595,28 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
             <div className="mt-4 w-full mx-auto liquid-glass chat-container p-4 flex flex-col">
             <div className="flex-1 overflow-y-auto mb-3 p-3 rounded-lg bg-white/10 backdrop-blur-md max-h-64 min-h-[120px] glass-content border border-white/20 shadow-lg">
               {chatMessages.length === 0 ? (
-                <div className="text-sm text-gray-600 text-center mt-8">
+                <div
+                  className={`text-sm text-center mt-8 ${
+                    appearance === "black" ? "text-gray-200" : "text-gray-600"
+                  }`}
+                >
                   💬 Chat with {currentModel.provider === "ollama" ? "🏠" : currentModel.provider === "openrouter" ? "🌐" : "☁️"} {currentModel.model}
                   <br />
-                  <span className="text-xs text-gray-500">Take a screenshot (Cmd+H) for automatic analysis</span>
+                  <span
+                    className={`text-xs ${
+                      appearance === "black" ? "text-gray-300" : "text-gray-500"
+                    }`}
+                  >
+                    Take a screenshot (Cmd+H) for automatic analysis
+                  </span>
                   <br />
-                  <span className="text-xs text-gray-500">Click ⚙️ Models to switch AI providers</span>
+                  <span
+                    className={`text-xs ${
+                      appearance === "black" ? "text-gray-300" : "text-gray-500"
+                    }`}
+                  >
+                    Click ⚙️ Models to switch AI providers
+                  </span>
                 </div>
               ) : (
                 chatMessages.map((msg, idx) => (
@@ -299,21 +625,20 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
                     className={`w-full flex ${msg.role === "user" ? "justify-end" : "justify-start"} mb-3`}
                   >
                     <div
-                      className={`max-w-[80%] px-3 py-1.5 rounded-xl text-xs shadow-md backdrop-blur-sm border ${
+                      className={`chat-message-content max-w-[80%] px-3 py-1.5 rounded-xl text-xs shadow-md backdrop-blur-sm border ${
                         msg.role === "user" 
                           ? "bg-gray-700/80 text-gray-100 ml-12 border-gray-600/40" 
                           : "bg-white/85 text-gray-700 mr-12 border-gray-200/50"
                       }`}
                       style={{ wordBreak: "break-word", lineHeight: "1.4" }}
-                    >
-                      {msg.text}
-                    </div>
+                      dangerouslySetInnerHTML={{ __html: formatMessageToHtml(msg.text) }}
+                    />
                   </div>
                 ))
               )}
               {chatLoading && (
                 <div className="flex justify-start mb-3">
-                  <div className="bg-white/85 text-gray-600 px-3 py-1.5 rounded-xl text-xs backdrop-blur-sm border border-gray-200/50 shadow-md mr-12">
+                  <div className="bg-white/85 text-gray-600 px-3 py-1.5 rounded-xl text-xs backdrop-blur-sm border border-gray-200/50 shadow-md mr-12 whitespace-pre-wrap">
                     <span className="inline-flex items-center">
                       <span className="animate-pulse text-gray-400">●</span>
                       <span className="animate-pulse animation-delay-200 text-gray-400">●</span>
@@ -333,7 +658,11 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
             >
               <input
                 ref={chatInputRef}
-                className="flex-1 rounded-lg px-3 py-2 bg-white/25 backdrop-blur-md text-gray-800 placeholder-gray-500 text-xs focus:outline-none focus:ring-1 focus:ring-gray-400/60 border border-white/40 shadow-lg transition-all duration-200"
+                className={`flex-1 rounded-lg px-3 py-2 bg-white/25 backdrop-blur-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-400/60 border border-white/40 shadow-lg transition-all duration-200 ${
+                  appearance === "black"
+                    ? "text-white placeholder-gray-300"
+                    : "text-gray-800 placeholder-gray-500"
+                }`}
                 placeholder="Type your message..."
                 value={chatInput}
                 onChange={e => setChatInput(e.target.value)}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react"
 import { IoLogOutOutline } from "react-icons/io5"
+import { useAppearance } from "../../context/AppearanceContext"
 
 interface SolutionCommandsProps {
   extraScreenshots: any[]
@@ -10,6 +11,7 @@ const SolutionCommands: React.FC<SolutionCommandsProps> = ({
   extraScreenshots,
   onTooltipVisibilityChange
 }) => {
+  const { appearance, toggleAppearance } = useAppearance()
   const [isTooltipVisible, setIsTooltipVisible] = useState(false)
   const tooltipRef = useRef<HTMLDivElement>(null)
 
@@ -89,6 +91,17 @@ const SolutionCommands: React.FC<SolutionCommandsProps> = ({
                 R
               </button>
             </div>
+          </div>
+
+          {/* Appearance Toggle */}
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <button
+              className="bg-white/10 hover:bg-white/20 transition-colors rounded-md px-2 py-1 text-[11px] leading-none text-white/70 flex items-center gap-1"
+              onClick={toggleAppearance}
+              type="button"
+            >
+              🎨 {appearance === "black" ? "Transparent" : "Black"}
+            </button>
           </div>
 
           {/* Question Mark with Tooltip */}

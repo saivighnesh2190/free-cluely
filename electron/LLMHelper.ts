@@ -16,7 +16,8 @@ export class LLMHelper {
   private useOpenRouter: boolean = false
   private geminiApiKey: string = ""
   private openRouterApiKey: string = ""
-  private openRouterModel: string = "qwen/qwen3-coder:free"
+  private openRouterModel: string = "google/gemini-2.5-flash"
+  private geminiVoiceClient: GoogleGenAI | null = null
 
   constructor(apiKey?: string, useOllama: boolean = false, ollamaModel?: string, ollamaUrl?: string, useOpenRouter: boolean = false, openRouterApiKey?: string, openRouterModel?: string) {
     this.useOllama = useOllama
@@ -54,13 +55,46 @@ export class LLMHelper {
     }
   }
 
-  private async generateContentWithRetry(contents: any, model?: string): Promise<any> {
+  private resolveGeminiApiKey(): string {
+    if (this.geminiApiKey) return this.geminiApiKey
+    const envKey = process.env.GEMINI_API_KEY?.trim()
+    if (envKey) {
+      this.geminiApiKey = envKey
+    }
+    return this.geminiApiKey
+  }
+
+  private async getGeminiClient(): Promise<GoogleGenAI> {
+    const apiKey = this.resolveGeminiApiKey()
+    if (!apiKey) {
+      throw new Error("Gemini API key is required for voice features")
+    }
+
+    if (!this.useOllama && !this.useOpenRouter) {
+      if (!this.model) {
+        this.model = new GoogleGenAI({ apiKey })
+      }
+      return this.model
+    }
+
+    if (!this.geminiVoiceClient) {
+      this.geminiVoiceClient = new GoogleGenAI({ apiKey })
+    }
+    return this.geminiVoiceClient
+  }
+
+  private async generateContentWithRetry(contents: any, model?: string, client?: GoogleGenAI): Promise<any> {
     const maxRetries = 3;
     let delay = 1000; // Start with 1 second
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        const result = await this.model!.models.generateContent({
+        const targetClient = client ?? this.model
+        if (!targetClient) {
+          throw new Error("No LLM client configured")
+        }
+
+        const result = await targetClient.models.generateContent({
           model: model || this.geminiModel,
           contents: contents
         });
@@ -83,6 +117,43 @@ export class LLMHelper {
     // Remove any leading/trailing whitespace
     text = text.trim();
     return text;
+  }
+
+  public async interpretVoiceTranscript(transcript: string) {
+    const trimmed = transcript?.trim();
+    if (!trimmed) {
+      throw new Error("Empty voice transcript provided");
+    }
+
+    const prompt = `${this.systemPrompt}\n\nThe user spoke the following text:\n"""${trimmed}"""\n\nInterpret the request, infer what the user is asking for and what outcome they expect. Respond ONLY with a JSON object using this exact schema:\n{\n  "problem_statement": "Concise restatement of the user's request",\n  "context": "Relevant background or assumptions to understand the request",\n  "expected_outcome": "What result or deliverable the user wants",\n  "key_requirements": ["Bullet list of must-have requirements or constraints"],\n  "clarifications_needed": ["Questions we should ask if anything is ambiguous"],\n  "suggested_responses": ["High-level actions or solution directions"],\n  "reasoning": "Short explanation describing how you interpreted the request"\n}\nDo not include markdown code fences or any additional narration.`;
+
+    try {
+      const geminiClient = await this.getGeminiClient();
+      const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }] }], this.geminiModel, geminiClient);
+      const text = this.cleanJsonResponse(result.candidates[0].content.parts[0].text);
+      return JSON.parse(text);
+    } catch (error: any) {
+      console.error("Error interpreting voice transcript:", error);
+      throw new Error(error?.message || "Failed to interpret voice request");
+    }
+  }
+
+  public async generateVoiceResponse(transcript: string, interpretation?: any): Promise<string> {
+    const geminiClient = await this.getGeminiClient()
+    const reasoning = interpretation?.reasoning ? `\nReasoning provided: ${interpretation.reasoning}` : ""
+    const outcome = interpretation?.expected_outcome ? `\nExpected outcome: ${interpretation.expected_outcome}` : ""
+    const requirements = Array.isArray(interpretation?.key_requirements) && interpretation.key_requirements.length
+      ? `\nKey requirements: ${interpretation.key_requirements.join("; ")}`
+      : ""
+
+    const prompt = `You are Wingman AI responding to a voice request. The transcript is:\n"""${transcript.trim()}"""${outcome}${requirements}${reasoning}\n\nProvide a direct, helpful answer to the user's request. Focus on delivering the explanation or result they asked for. Keep the tone concise, practical, and on-topic. If the request is to explain or describe something, give a thorough yet approachable explanation. Avoid offering meta-comments about needing clarification unless the transcript is ambiguous beyond interpretation.`
+
+    const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }] }], this.geminiModel, geminiClient)
+    const text = result.candidates[0].content.parts[0].text?.trim()
+    if (!text) {
+      throw new Error("Voice response generation returned empty output")
+    }
+    return text
   }
 
   private async callOllama(prompt: string): Promise<string> {
@@ -314,15 +385,7 @@ export class LLMHelper {
 
   public async analyzeAudioFile(audioPath: string) {
     try {
-      // For OpenRouter, we can't analyze audio files directly
-      if (this.useOpenRouter) {
-        const prompt = `${this.systemPrompt}\n\nI have an audio file that I need help analyzing. Since I cannot process audio directly, please provide guidance on how to analyze audio files for problem-solving or coding assistance.\n\nDescribe this audio clip in a short, concise answer. In addition to your main answer, suggest several possible actions or responses the user could take next.`;
-        
-        const result = await this.callOpenRouter(prompt);
-        return { text: result, timestamp: Date.now() };
-      }
-
-      // Original Gemini implementation for audio analysis
+      const client = await this.getGeminiClient()
       const audioData = await fs.promises.readFile(audioPath);
       const audioPart = {
         inlineData: {
@@ -331,7 +394,7 @@ export class LLMHelper {
         }
       };
       const prompt = `${this.systemPrompt}\n\nDescribe this audio clip in a short, concise answer. In addition to your main answer, suggest several possible actions or responses the user could take next based on the audio. Do not return a structured JSON object, just answer naturally as you would to a user.`;
-      const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }, audioPart] }]);
+      const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }, audioPart] }], this.geminiModel, client);
       const text = result.candidates[0].content.parts[0].text;
       return { text, timestamp: Date.now() };
     } catch (error) {
@@ -342,15 +405,7 @@ export class LLMHelper {
 
   public async analyzeAudioFromBase64(data: string, mimeType: string) {
     try {
-      // For OpenRouter, we can't analyze audio data directly
-      if (this.useOpenRouter) {
-        const prompt = `${this.systemPrompt}\n\nI have audio data that I need help analyzing. Since I cannot process audio directly, please provide guidance on how to analyze audio data for problem-solving or coding assistance.\n\nDescribe this audio clip in a short, concise answer. In addition to your main answer, suggest several possible actions or responses the user could take next based on the audio.`;
-        
-        const result = await this.callOpenRouter(prompt);
-        return { text: result, timestamp: Date.now() };
-      }
-
-      // Original Gemini implementation for audio analysis
+      const client = await this.getGeminiClient()
       const audioPart = {
         inlineData: {
           data,
@@ -358,7 +413,7 @@ export class LLMHelper {
         }
       };
       const prompt = `${this.systemPrompt}\n\nDescribe this audio clip in a short, concise answer. In addition to your main answer, suggest several possible actions or responses the user could take next based on the audio. Do not return a structured JSON object, just answer naturally as you would to a user and be concise.`;
-      const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }, audioPart] }]);
+      const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }, audioPart] }], this.geminiModel, client);
       const text = result.candidates[0].content.parts[0].text;
       return { text, timestamp: Date.now() };
     } catch (error) {

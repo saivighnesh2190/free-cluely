@@ -27,4 +27,11 @@ export interface ProblemStatementData {
   test_cases: any[];
   validation_type: string;
   difficulty: string;
+  meta?: {
+    transcript?: string;
+    key_requirements?: string[];
+    clarifications_needed?: string[];
+    reasoning?: string;
+    suggested_responses?: string[];
+  };
 }
