@@ -25,6 +25,14 @@ export class LLMHelper {
     this.useOllama = useOllama
     this.useOpenRouter = useOpenRouter
     this.geminiApiKey = (apiKey ?? "").trim() || process.env.GEMINI_API_KEY?.trim() || ""
+
+    // Safety: If no primary key is found, use the fallback key as the primary
+    if (!this.geminiApiKey && !this.useOllama && !this.useOpenRouter) {
+      console.log("[LLMHelper] No API key found in .env, using default fallback key.");
+      this.geminiApiKey = this.fallbackGeminiApiKey;
+      this.usingFallbackKey = true;
+    }
+
     this.openRouterApiKey = (openRouterApiKey ?? "").trim() || process.env.OPENROUTER_API_KEY?.trim() || this.openRouterApiKey
     if (openRouterModel) {
       this.openRouterModel = openRouterModel
