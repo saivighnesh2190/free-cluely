@@ -26,6 +26,9 @@ export class ShortcutsHelper {
             path: screenshotPath,
             preview
           })
+          // Automatically process the screenshot to get AI answer
+          console.log("Auto-processing screenshot...")
+          await this.appState.processingHelper.processScreenshots()
         } catch (error) {
           console.error("Error capturing screenshot:", error)
         }

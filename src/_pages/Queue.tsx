@@ -10,7 +10,6 @@ import {
 } from "../components/ui/toast"
 import QueueCommands from "../components/Queue/QueueCommands"
 import ModelSelector from "../components/ui/ModelSelector"
-import ScreenshotQuestionDialog from "../components/ui/ScreenshotQuestionDialog"
 import { useAppearance } from "../context/AppearanceContext"
 import type { ElectronAPI } from "../types/electron"
 
@@ -22,6 +21,12 @@ interface ScreenshotItemData {
   path: string
   preview: string
   question?: string
+}
+
+interface ChatMessage {
+  role: "user" | "gemini"
+  text: string
+  attachments?: ScreenshotItemData[]
 }
 
 const Queue: React.FC<QueueProps> = ({ setView }) => {
@@ -38,13 +43,14 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
   const contentRef = useRef<HTMLDivElement>(null)
 
   const [chatInput, setChatInput] = useState("")
-  const [chatMessages, setChatMessages] = useState<{role: "user"|"gemini", text: string}[]>([])
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatLoading, setChatLoading] = useState(false)
   const [isChatOpen, setIsChatOpen] = useState(false)
   const chatInputRef = useRef<HTMLInputElement>(null)
   
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [currentModel, setCurrentModel] = useState<{ provider: string; model: string }>({ provider: "gemini", model: "gemini-2.0-flash" })
+  const [attachedScreenshots, setAttachedScreenshots] = useState<ScreenshotItemData[]>([])
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const voiceChunksRef = useRef<Blob[]>([])
@@ -75,8 +81,6 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
     }
   )
 
-  const [pendingQuestion, setPendingQuestion] = useState<{ path: string; preview: string } | null>(null)
-
   const showToast = (
     title: string,
     description: string,
@@ -106,13 +110,36 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
   }
 
   const handleChatSend = async () => {
-    if (!chatInput.trim()) return
-    setChatMessages((msgs) => [...msgs, { role: "user", text: chatInput }])
+    const trimmedInput = chatInput.trim()
+    const attachmentsToSend = [...attachedScreenshots]
+    if (!trimmedInput && attachmentsToSend.length === 0) return
+
+    setChatMessages((msgs) => [
+      ...msgs,
+      {
+        role: "user",
+        text: trimmedInput,
+        attachments: attachmentsToSend.length > 0 ? attachmentsToSend : undefined
+      }
+    ])
+
     setChatLoading(true)
     setChatInput("")
+
     try {
-      const response = await window.electronAPI.invoke("gemini-chat", chatInput)
-      setChatMessages((msgs) => [...msgs, { role: "gemini", text: response }])
+      if (attachmentsToSend.length > 0) {
+        for (const attachment of attachmentsToSend) {
+          await analyzeScreenshot(attachment.path, trimmedInput || undefined)
+        }
+        setAttachedScreenshots((prev) =>
+          prev.filter((item) => !attachmentsToSend.some((sent) => sent.path === item.path))
+        )
+      }
+
+      if (attachmentsToSend.length === 0 && trimmedInput) {
+        const response = await window.electronAPI.invoke("gemini-chat", trimmedInput)
+        setChatMessages((msgs) => [...msgs, { role: "gemini", text: response }])
+      }
     } catch (err) {
       setChatMessages((msgs) => [...msgs, { role: "gemini", text: "Error: " + String(err) }])
     } finally {
@@ -184,15 +211,21 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
 
   // Seamless screenshot-to-LLM flow
   useEffect(() => {
-    // Listen for screenshot taken event
     const unsubscribe = window.electronAPI.onScreenshotTaken(async (data) => {
-      setPendingQuestion({ path: data.path, preview: data.preview })
+      setAttachedScreenshots((prev) => {
+        if (prev.some((item) => item.path === data.path)) {
+          return prev
+        }
+        return [...prev, { path: data.path, preview: data.preview, question: data.question }]
+      })
+      setIsChatOpen(true)
+      chatInputRef.current?.focus()
       await refetch()
-    });
+    })
     return () => {
-      unsubscribe && unsubscribe();
-    };
-  }, [refetch]);
+      unsubscribe && unsubscribe()
+    }
+  }, [refetch])
 
   const escapeHtml = (str: string) =>
     str
@@ -270,6 +303,80 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
     return `<span class="math-inline">${result}</span>`
   }
 
+  const convertTables = (input: string) => {
+    const lines = input.split("\n")
+    const output: string[] = []
+    let tableBuffer: string[] = []
+
+    const isTableSeparator = (line: string) => /\|\s*:?-{3,}:?\s*/.test(line)
+    const isTableLine = (line: string) => /^\s*\|.*\|\s*$/.test(line.trim())
+
+    const flushTableBuffer = () => {
+      if (tableBuffer.length >= 2 && isTableSeparator(tableBuffer[1])) {
+        const headerRow = tableBuffer[0]
+        const dataRows = tableBuffer.slice(2)
+
+        const parseRow = (row: string) =>
+          row
+            .trim()
+            .replace(/^\|/, "")
+            .replace(/\|$/, "")
+            .split("|")
+            .map((cell) => cell.trim())
+
+        const headerCells = parseRow(headerRow)
+        const bodyRows = dataRows
+          .filter((row) => row.trim().length > 0)
+          .map((row) => parseRow(row))
+
+        const tableHtml = [
+          '<div class="chat-table-wrapper" style="overflow-x:auto;margin:0.35rem 0;">',
+          '<table class="chat-table" style="width:100%;border-collapse:collapse;font-size:0.78rem;">',
+          '<thead><tr>',
+          headerCells
+            .map(
+              (cell) =>
+                `<th style="border:1px solid rgba(255,255,255,0.25);padding:0.45rem 0.6rem;text-align:left;background:rgba(255,255,255,0.08);color:#f9fafb;">${cell}</th>`
+            )
+            .join(""),
+          '</tr></thead>',
+          '<tbody>',
+          bodyRows
+            .map(
+              (rowCells) =>
+                `<tr>${rowCells
+                  .map(
+                    (cell) =>
+                      `<td style="border:1px solid rgba(255,255,255,0.15);padding:0.45rem 0.6rem;color:#f3f4f6;">${cell}</td>`
+                  )
+                  .join("")}</tr>`
+            )
+            .join(""),
+          '</tbody>',
+          '</table>',
+          '</div>'
+        ].join("")
+
+        output.push(tableHtml)
+      } else {
+        output.push(...tableBuffer)
+      }
+      tableBuffer = []
+    }
+
+    for (const line of lines) {
+      if (isTableLine(line)) {
+        tableBuffer.push(line)
+      } else {
+        flushTableBuffer()
+        output.push(line)
+      }
+    }
+
+    flushTableBuffer()
+    return output.join("\n")
+  }
+
   const convertLists = (input: string) => {
     const lines = input.split("\n")
     const output: string[] = []
@@ -331,6 +438,8 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
 
     let html = escapeHtml(processed)
 
+    html = convertTables(html)
+
     html = html.replace(/^#{3}\s*(.*)$/gm, '<strong class="chat-heading">$1</strong>')
     html = html.replace(/^#{2}\s*(.*)$/gm, '<strong class="chat-heading">$1</strong>')
 
@@ -390,28 +499,6 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
     } finally {
       setChatLoading(false)
     }
-  }
-
-  const handleQuestionSubmit = async (path: string, question: string) => {
-    try {
-      await window.electronAPI.setScreenshotQuestion(path, question)
-      queryClient.setQueryData<ScreenshotItemData[] | undefined>(["screenshots"], (existing) => {
-        if (!existing) return existing
-        return existing.map((item) =>
-          item.path === path ? { ...item, question } : item
-        )
-      })
-      await analyzeScreenshot(path, question)
-    } catch (error) {
-      console.error("Error saving screenshot question:", error)
-      showToast("Error", "Failed to save question for screenshot", "error")
-    } finally {
-      setPendingQuestion(null)
-    }
-  }
-
-  const handleQuestionCancel = () => {
-    setPendingQuestion(null)
   }
 
   const handleTooltipVisibilityChange = (visible: boolean, height: number) => {
@@ -549,7 +636,6 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
     }
   }, [])
 
-
   return (
     <div
       ref={barRef}
@@ -593,102 +679,118 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
           {/* Conditional Chat Interface */}
           {isChatOpen && (
             <div className="mt-4 w-full mx-auto liquid-glass chat-container p-4 flex flex-col">
-            <div className="flex-1 overflow-y-auto mb-3 p-3 rounded-lg bg-white/10 backdrop-blur-md max-h-64 min-h-[120px] glass-content border border-white/20 shadow-lg">
-              {chatMessages.length === 0 ? (
-                <div
-                  className={`text-sm text-center mt-8 ${
-                    appearance === "black" ? "text-gray-200" : "text-gray-600"
-                  }`}
-                >
-                  💬 Chat with {currentModel.provider === "ollama" ? "🏠" : currentModel.provider === "openrouter" ? "🌐" : "☁️"} {currentModel.model}
-                  <br />
-                  <span
-                    className={`text-xs ${
-                      appearance === "black" ? "text-gray-300" : "text-gray-500"
-                    }`}
-                  >
-                    Take a screenshot (Cmd+H) for automatic analysis
-                  </span>
-                  <br />
-                  <span
-                    className={`text-xs ${
-                      appearance === "black" ? "text-gray-300" : "text-gray-500"
-                    }`}
-                  >
-                    Click ⚙️ Models to switch AI providers
-                  </span>
-                </div>
-              ) : (
-                chatMessages.map((msg, idx) => (
+              <div className="flex-1 overflow-y-auto mb-3 p-3 rounded-lg bg-white/10 backdrop-blur-md max-h-64 min-h-[120px] glass-content border border-white/20 shadow-lg">
+                {chatMessages.length === 0 ? (
                   <div
-                    key={idx}
-                    className={`w-full flex ${msg.role === "user" ? "justify-end" : "justify-start"} mb-3`}
+                    className={`text-sm text-center mt-8 ${
+                      appearance === "black" ? "text-gray-200" : "text-gray-600"
+                    }`}
                   >
-                    <div
-                      className={`chat-message-content max-w-[80%] px-3 py-1.5 rounded-xl text-xs shadow-md backdrop-blur-sm border ${
-                        msg.role === "user" 
-                          ? "bg-gray-700/80 text-gray-100 ml-12 border-gray-600/40" 
-                          : "bg-white/85 text-gray-700 mr-12 border-gray-200/50"
+                    💬 Chat with {currentModel.provider === "ollama" ? "🏠" : currentModel.provider === "openrouter" ? "🌐" : "☁️"} {currentModel.model}
+                    <br />
+                    <span
+                      className={`text-xs ${
+                        appearance === "black" ? "text-gray-300" : "text-gray-500"
                       }`}
-                      style={{ wordBreak: "break-word", lineHeight: "1.4" }}
-                      dangerouslySetInnerHTML={{ __html: formatMessageToHtml(msg.text) }}
-                    />
-                  </div>
-                ))
-              )}
-              {chatLoading && (
-                <div className="flex justify-start mb-3">
-                  <div className="bg-white/85 text-gray-600 px-3 py-1.5 rounded-xl text-xs backdrop-blur-sm border border-gray-200/50 shadow-md mr-12 whitespace-pre-wrap">
-                    <span className="inline-flex items-center">
-                      <span className="animate-pulse text-gray-400">●</span>
-                      <span className="animate-pulse animation-delay-200 text-gray-400">●</span>
-                      <span className="animate-pulse animation-delay-400 text-gray-400">●</span>
-                      <span className="ml-2">{currentModel.model} is replying...</span>
+                    >
+                      Take a screenshot (Cmd+H) for automatic analysis
+                    </span>
+                    <br />
+                    <span
+                      className={`text-xs ${
+                        appearance === "black" ? "text-gray-300" : "text-gray-500"
+                      }`}
+                    >
+                      Click ⚙️ Models to switch AI providers
                     </span>
                   </div>
+                ) : (
+                  chatMessages.map((msg, idx) => (
+                    <div
+                      key={idx}
+                      className={`w-full flex ${msg.role === "user" ? "justify-end" : "justify-start"} mb-3`}
+                    >
+                      <div
+                        className={`chat-message-content max-w-[80%] px-3 py-1.5 rounded-xl text-xs shadow-md backdrop-blur-sm border ${
+                          msg.role === "user"
+                            ? "bg-gray-700/80 text-gray-100 ml-12 border-gray-600/40"
+                            : "bg-black/80 text-white mr-12 border-white/30"
+                        }`}
+                        style={{ wordBreak: "break-word", lineHeight: "1.4" }}
+                        dangerouslySetInnerHTML={{ __html: formatMessageToHtml(msg.text) }}
+                      />
+                    </div>
+                  ))
+                )}
+                {chatLoading && (
+                  <div className="flex justify-start mb-3">
+                    <div className="bg-black/80 text-white px-3 py-1.5 rounded-xl text-xs backdrop-blur-sm border border-white/30 shadow-md mr-12 whitespace-pre-wrap">
+                      <span className="inline-flex items-center">
+                        <span className="animate-pulse text-gray-400">●</span>
+                        <span className="animate-pulse animation-delay-200 text-gray-400">●</span>
+                        <span className="animate-pulse animation-delay-400 text-gray-400">●</span>
+                        <span className="ml-2">{currentModel.model} is replying...</span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {attachedScreenshots.length > 0 && (
+                <div className="mb-3 flex gap-3 overflow-x-auto pb-1">
+                  {attachedScreenshots.map((shot) => (
+                    <div key={shot.path} className="relative flex-shrink-0">
+                      <img
+                        src={shot.preview}
+                        alt="Attached screenshot"
+                        className="w-24 h-16 object-cover rounded border border-white/30"
+                      />
+                      <button
+                        type="button"
+                        className="absolute -top-1 -right-1 bg-black/70 text-white rounded-full p-0.5 text-[10px]"
+                        onClick={() => setAttachedScreenshots((prev) => prev.filter((item) => item.path !== shot.path))}
+                        aria-label="Remove attached screenshot"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
-            </div>
-            <form
-              className="flex gap-2 items-center glass-content"
-              onSubmit={e => {
-                e.preventDefault();
-                handleChatSend();
-              }}
-            >
-              <input
-                ref={chatInputRef}
-                className={`flex-1 rounded-lg px-3 py-2 bg-white/25 backdrop-blur-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-400/60 border border-white/40 shadow-lg transition-all duration-200 ${
-                  appearance === "black"
-                    ? "text-white placeholder-gray-300"
-                    : "text-gray-800 placeholder-gray-500"
-                }`}
-                placeholder="Type your message..."
-                value={chatInput}
-                onChange={e => setChatInput(e.target.value)}
-                disabled={chatLoading}
-              />
-              <button
-                type="submit"
-                className="p-2 rounded-lg bg-gray-600/80 hover:bg-gray-700/80 border border-gray-500/60 flex items-center justify-center transition-all duration-200 backdrop-blur-sm shadow-lg disabled:opacity-50"
-                disabled={chatLoading || !chatInput.trim()}
-                tabIndex={-1}
-                aria-label="Send"
+              <form
+                className="flex gap-2 items-center glass-content"
+                onSubmit={e => {
+                  e.preventDefault();
+                  handleChatSend();
+                }}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="white" className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 19.5l15-7.5-15-7.5v6l10 1.5-10 1.5v6z" />
-                </svg>
-              </button>
-            </form>
-          </div>
+                <input
+                  ref={chatInputRef}
+                  className={`flex-1 rounded-lg px-3 py-2 bg-white/25 backdrop-blur-md text-xs focus:outline-none focus:ring-1 focus:ring-gray-400/60 border border-white/40 shadow-lg transition-all duration-200 ${
+                    appearance === "black"
+                      ? "text-white placeholder-gray-300"
+                      : "text-gray-800 placeholder-gray-500"
+                  }`}
+                  placeholder="Type your message..."
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  disabled={chatLoading}
+                />
+                <button
+                  type="submit"
+                  className="p-2 rounded-lg bg-gray-600/80 hover:bg-gray-700/80 border border-gray-500/60 flex items-center justify-center transition-all duration-200 backdrop-blur-sm shadow-lg disabled:opacity-50"
+                  disabled={chatLoading || (!chatInput.trim() && attachedScreenshots.length === 0)}
+                  tabIndex={-1}
+                  aria-label="Send"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="white" className="w-4 h-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 19.5l15-7.5-15-7.5v6l10 1.5-10 1.5v6z" />
+                  </svg>
+                </button>
+              </form>
+            </div>
           )}
         </div>
       </div>
-      <ScreenshotQuestionDialog
-        screenshot={pendingQuestion}
-        onCancel={handleQuestionCancel}
-        onSubmit={(question: string) => pendingQuestion && handleQuestionSubmit(pendingQuestion.path, question)}
-      />
     </div>
   )
 }

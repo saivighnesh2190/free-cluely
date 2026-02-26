@@ -15,6 +15,8 @@ export class LLMHelper {
   private geminiModel: string = "models/gemini-2.5-flash"
   private useOpenRouter: boolean = false
   private geminiApiKey: string = ""
+  private fallbackGeminiApiKey: string = "AIzaSyBexlvFU7FG0mrs9fQF28iKlojVaVxN1v4"
+  private usingFallbackKey: boolean = false
   private openRouterApiKey: string = ""
   private openRouterModel: string = "google/gemini-2.5-flash"
   private geminiVoiceClient: GoogleGenAI | null = null
@@ -34,7 +36,7 @@ export class LLMHelper {
       this.ollamaUrl = ollamaUrl || "http://localhost:11434"
       this.ollamaModel = ollamaModel || "gemma:latest" // Default fallback
       console.log(`[LLMHelper] Using Ollama with model: ${this.ollamaModel}`)
-      
+
       // Auto-detect and use first available model if specified model doesn't exist
       this.initializeOllamaModel()
     } else if (this.geminiApiKey) {
@@ -99,8 +101,24 @@ export class LLMHelper {
           contents: contents
         });
         return result;
-      } catch (error) {
-        if (error.message.includes('503') && attempt < maxRetries - 1) {
+      } catch (error: any) {
+        const errorMessage = error.message || '';
+        const isRateLimitError = errorMessage.includes('429') ||
+          errorMessage.includes('quota') ||
+          errorMessage.includes('RATE_LIMIT') ||
+          errorMessage.includes('RESOURCE_EXHAUSTED');
+
+        // If rate limit hit and we have a fallback key, switch to it
+        if (isRateLimitError && !this.usingFallbackKey && this.fallbackGeminiApiKey) {
+          console.log(`[LLMHelper] Rate limit hit, switching to fallback API key...`);
+          this.geminiApiKey = this.fallbackGeminiApiKey;
+          this.model = new GoogleGenAI({ apiKey: this.fallbackGeminiApiKey });
+          this.usingFallbackKey = true;
+          // Retry with the new key
+          continue;
+        }
+
+        if (errorMessage.includes('503') && attempt < maxRetries - 1) {
           console.log(`[LLMHelper] Model overloaded, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
           await new Promise(resolve => setTimeout(resolve, delay));
           delay *= 2; // Exponential backoff
@@ -280,7 +298,7 @@ export class LLMHelper {
   "suggested_responses": ["Approach 1", "Approach 2", "..."],
   "reasoning": "Why this guidance is helpful"
 }\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`
-        
+
         const result = await this.callOpenRouter(prompt);
         const parsed = JSON.parse(result);
         return parsed;
@@ -288,7 +306,7 @@ export class LLMHelper {
 
       // Original Gemini implementation for image analysis
       const imageParts = await Promise.all(imagePaths.map(path => this.fileToGenerativePart(path)))
-      
+
       const prompt = `${this.systemPrompt}\n\nYou are a wingman. Please analyze these images and extract the following information in JSON format:\n{
   "problem_statement": "A clear statement of the problem or situation depicted in the images.",
   "context": "Relevant background or context from the images.",
@@ -327,7 +345,7 @@ export class LLMHelper {
         console.log("[LLMHelper] Gemini LLM returned result.");
         result = result.candidates[0].content.parts[0].text;
       }
-      
+
       const text = this.cleanJsonResponse(result);
       const parsed = JSON.parse(text);
       console.log("[LLMHelper] Parsed LLM response:", parsed);
@@ -352,7 +370,7 @@ export class LLMHelper {
     "reasoning": "Why these suggestions are appropriate"
   }
 }\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`
-        
+
         const result = await this.callOpenRouter(prompt);
         const parsed = JSON.parse(result);
         console.log("[LLMHelper] Parsed OpenRouter debug response:", parsed);
@@ -361,7 +379,7 @@ export class LLMHelper {
 
       // Original Gemini implementation for image analysis
       const imageParts = await Promise.all(debugImagePaths.map(path => this.fileToGenerativePart(path)))
-      
+
       const prompt = `${this.systemPrompt}\n\nYou are a wingman. Given:\n1. The original problem or situation: ${JSON.stringify(problemInfo, null, 2)}\n2. The current response or approach: ${currentCode}\n3. The debug information in the provided images\n\nPlease analyze the debug information and provide feedback in this JSON format:\n{
   "solution": {
     "code": "The code or main answer here.",
@@ -440,7 +458,21 @@ export class LLMHelper {
           mimeType: "image/png"
         }
       };
-      const prompt = `${this.systemPrompt}\n\nAnalyze this screenshot.${userQuestion ? ` The user specifically asked: "${userQuestion}"` : ""} If there is a question or problem shown in the image, provide a direct answer or solution. If it's just an image without a clear question, describe the content briefly. Always be concise and helpful.`;
+      const prompt = `Analyze this screenshot carefully and identify what type of content it contains, then answer accordingly:
+
+1. If it is a CODING/PROGRAMMING question (problem statement): Provide TWO Java solutions - a BRUTE FORCE approach and an OPTIMIZED approach. Include Time and Space complexity as comments. Check test cases and constraints carefully. Give only Java code.
+
+2. If it is a CODE SNIPPET (that needs debugging): Fix the bug by modifying the code MINIMALLY. Check if there is a "Debug Constraint" (e.g., max X characters modified) mentioned in the screenshot and adherent strictly to it. Provide the corrected code and briefly mention which lines were changed.
+
+3. If it is an APTITUDE/REASONING question (math, logical reasoning, puzzles, quantitative): Provide the correct answer with a clear step-by-step solution. Show the formula or method used.
+
+4. If it is a THEORETICAL/CONCEPTUAL question (definitions, concepts, explanations): Give a clear, concise, and accurate answer. Use bullet points if needed.
+
+5. If it is a TECHNICAL INTERVIEW question (system design, OS, DBMS, networking, OOP concepts): Provide a well-structured answer with key points, examples, and any relevant diagrams described in text.
+
+6. If it is a MULTIPLE CHOICE question (MCQ): Identify the correct option and explain why it is correct and why other options are wrong.
+
+Detect the content type automatically from the screenshot and respond with the most appropriate format. Be accurate, concise, and direct.${userQuestion ? ` The user specifically asked: "${userQuestion}"` : ""}`;
       const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }, imagePart] }]);
       const text = result.candidates[0].content.parts[0].text;
       return { text, timestamp: Date.now() };
@@ -483,11 +515,11 @@ export class LLMHelper {
 
   public async getOllamaModels(): Promise<string[]> {
     if (!this.useOllama) return [];
-    
+
     try {
       const response = await fetch(`${this.ollamaUrl}/api/tags`);
       if (!response.ok) throw new Error('Failed to fetch models');
-      
+
       const data = await response.json();
       return data.models?.map((model: any) => model.name) || [];
     } catch (error) {
@@ -509,14 +541,14 @@ export class LLMHelper {
   public async switchToOllama(model?: string, url?: string): Promise<void> {
     this.useOllama = true;
     if (url) this.ollamaUrl = url;
-    
+
     if (model) {
       this.ollamaModel = model;
     } else {
       // Auto-detect first available model
       await this.initializeOllamaModel();
     }
-    
+
     console.log(`[LLMHelper] Switched to Ollama: ${this.ollamaModel} at ${this.ollamaUrl}`);
   }
 
@@ -525,12 +557,12 @@ export class LLMHelper {
     if (!resolvedKey) {
       throw new Error("No Gemini API key provided and no existing model instance");
     }
-    
+
     if (!this.model || apiKey) {
       this.model = new GoogleGenAI({ apiKey: resolvedKey });
     }
     this.geminiApiKey = resolvedKey;
-    
+
     this.useOllama = false;
     this.useOpenRouter = false;
     if (model) {
@@ -549,7 +581,7 @@ export class LLMHelper {
     if (model) {
       this.openRouterModel = model;
     }
-    
+
     this.useOllama = false;
     this.useOpenRouter = true;
     console.log(`[LLMHelper] Switched to OpenRouter: ${this.openRouterModel}`);

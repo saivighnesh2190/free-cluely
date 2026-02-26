@@ -33,27 +33,24 @@ export const ContentSection = ({
 }) => (
   <div className="space-y-2">
     <h2
-      className={`text-[13px] font-medium tracking-wide ${
-        appearance === "black" ? "text-white" : "text-gray-900"
-      }`}
+      className={`text-[13px] font-medium tracking-wide ${appearance === "black" ? "text-white" : "text-gray-900"
+        }`}
     >
       {title}
     </h2>
     {isLoading ? (
       <div className="mt-4 flex">
         <p
-          className={`text-xs bg-gradient-to-r from-gray-300 via-gray-100 to-gray-300 bg-clip-text animate-pulse ${
-            appearance === "black" ? "text-transparent" : "text-gray-500"
-          }`}
+          className={`text-xs bg-gradient-to-r from-gray-300 via-gray-100 to-gray-300 bg-clip-text animate-pulse ${appearance === "black" ? "text-transparent" : "text-gray-500"
+            }`}
         >
           Extracting problem statement...
         </p>
       </div>
     ) : (
       <div
-        className={`text-[13px] leading-[1.4] max-w-[600px] ${
-          appearance === "black" ? "text-gray-100" : "text-gray-700"
-        }`}
+        className={`text-[13px] leading-[1.4] max-w-[600px] ${appearance === "black" ? "text-gray-100" : "text-gray-700"
+          }`}
       >
         {content}
       </div>
@@ -75,9 +72,8 @@ const SolutionSection = ({
 }) => (
   <div className="space-y-2">
     <h2
-      className={`text-[13px] font-medium tracking-wide ${
-        appearance === "black" ? "text-white" : "text-gray-900"
-      }`}
+      className={`text-[13px] font-medium tracking-wide ${appearance === "black" ? "text-white" : "text-gray-900"
+        }`}
     >
       {title}
     </h2>
@@ -93,11 +89,10 @@ const SolutionSection = ({
       <div className="w-full">
         {isVoice ? (
           <div
-            className={`text-[13px] leading-[1.5] whitespace-pre-wrap rounded-xl px-4 py-3 border ${
-              appearance === "black"
-                ? "bg-white/5 text-gray-100 border-white/15"
-                : "bg-gray-100 text-gray-800 border-gray-200"
-            }`}
+            className={`text-[13px] leading-[1.5] whitespace-pre-wrap rounded-xl px-4 py-3 border ${appearance === "black"
+              ? "bg-white/5 text-gray-100 border-white/15"
+              : "bg-gray-100 text-gray-800 border-gray-200"
+              }`}
           >
             {content}
           </div>
@@ -137,9 +132,8 @@ export const ComplexitySection = ({
 }) => (
   <div className="space-y-2">
     <h2
-      className={`text-[13px] font-medium tracking-wide ${
-        appearance === "black" ? "text-white" : "text-gray-900"
-      }`}
+      className={`text-[13px] font-medium tracking-wide ${appearance === "black" ? "text-white" : "text-gray-900"
+        }`}
     >
       Complexity (Updated)
     </h2>
@@ -150,9 +144,8 @@ export const ComplexitySection = ({
     ) : (
       <div className="space-y-1">
         <div
-          className={`flex items-start gap-2 text-[13px] leading-[1.4] ${
-            appearance === "black" ? "text-gray-100" : "text-gray-700"
-          }`}
+          className={`flex items-start gap-2 text-[13px] leading-[1.4] ${appearance === "black" ? "text-gray-100" : "text-gray-700"
+            }`}
         >
           <div className="w-1 h-1 rounded-full bg-blue-400/80 mt-2 shrink-0" />
           <div>
@@ -160,9 +153,8 @@ export const ComplexitySection = ({
           </div>
         </div>
         <div
-          className={`flex items-start gap-2 text-[13px] leading-[1.4] ${
-            appearance === "black" ? "text-gray-100" : "text-gray-700"
-          }`}
+          className={`flex items-start gap-2 text-[13px] leading-[1.4] ${appearance === "black" ? "text-gray-100" : "text-gray-700"
+            }`}
         >
           <div className="w-1 h-1 rounded-full bg-blue-400/80 mt-2 shrink-0" />
           <div>
@@ -492,29 +484,39 @@ const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
           )}
 
           {/* Navbar of commands with the SolutionsHelper */}
-      <SolutionCommands
-        extraScreenshots={extraScreenshots}
-        onTooltipVisibilityChange={handleTooltipVisibilityChange}
-      />
+          <SolutionCommands
+            extraScreenshots={extraScreenshots}
+            onTooltipVisibilityChange={handleTooltipVisibilityChange}
+          />
 
           {/* Main Content - Modified width constraints */}
           <div
-            className={`w-full text-sm rounded-md border ${
-              appearance === "black"
-                ? "bg-black/70 text-gray-100 border-white/20"
-                : "bg-white/85 text-gray-800 border-gray-200"
-            }`}
+            className={`w-full text-sm rounded-md border ${appearance === "black"
+              ? "bg-black/70 text-gray-100 border-white/20"
+              : "bg-white/85 text-gray-800 border-gray-200"
+              }`}
           >
             <div className="rounded-lg overflow-hidden">
-          <div className="px-4 py-3 space-y-4 max-w-full max-h-[480px] overflow-y-auto pr-2">
+              <div className="px-4 py-3 space-y-4 max-w-full max-h-[480px] overflow-y-auto pr-2">
                 {/* Show Screenshot or Audio Result as main output if validation_type is manual */}
                 {problemStatementData?.validation_type === "manual" ? (
-                  <ContentSection
-                    title={problemStatementData?.output_format?.subtype === "voice" ? "Audio Result" : "Screenshot Result"}
-                    content={problemStatementData.problem_statement}
-                    isLoading={false}
-                    appearance={appearance}
-                  />
+                  <div className="space-y-2">
+                    <h2
+                      className={`text-[13px] font-medium tracking-wide ${appearance === "black" ? "text-white" : "text-gray-900"
+                        }`}
+                    >
+                      {problemStatementData?.output_format?.subtype === "voice" ? "Audio Result" : "Screenshot Result"}
+                    </h2>
+                    <div
+                      className={`text-[13px] leading-[1.6] whitespace-pre-wrap rounded-xl px-4 py-3 border ${appearance === "black"
+                          ? "bg-white/5 text-gray-100 border-white/15"
+                          : "bg-gray-100 text-gray-800 border-gray-200"
+                        }`}
+                      style={{ fontFamily: "monospace", wordBreak: "break-word" }}
+                    >
+                      {problemStatementData.problem_statement}
+                    </div>
+                  </div>
                 ) : (
                   <>
                     {/* Problem Statement Section - Only for non-manual */}
@@ -528,8 +530,8 @@ const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
                     {problemStatementData && !solutionData && (
                       <div className="mt-4 flex">
                         <p className="text-xs bg-gradient-to-r from-gray-300 via-gray-100 to-gray-300 bg-clip-text text-transparent animate-pulse">
-                          {problemStatementData?.output_format?.subtype === "voice" 
-                            ? "Processing voice input..." 
+                          {problemStatementData?.output_format?.subtype === "voice"
+                            ? "Processing voice input..."
                             : "Generating solutions..."}
                         </p>
                       </div>
