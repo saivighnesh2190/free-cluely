@@ -38,8 +38,8 @@ npm install
    ```env
    GEMINI_API_KEY=your_primary_api_key_here
    GEMINI_FALLBACK_API_KEY=your_backup_api_key_here (Optional)
-   AIzaSyAHj1jSrQgacIbs6kKKkzv7HkR_vFGX7Qw
-   AIzaSyDqPr05loKBzNz3n4itHxROES9BFSTLFBg
+   AIzaSyAHj1jSrQg
+   
    ```
    
    **For Ollama (Local/Private AI):**
@@ -50,6 +50,7 @@ npm install
    ```
    
    - Save the file
+   - acIbs6kKKkzv7HkR_vFGX7Qw
 
 ### Running the App
 
