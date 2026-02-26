@@ -24,8 +24,8 @@ cd free-cluely
 2. Install dependencies:
 ```bash
 # If you encounter Sharp/Python build errors, use this:
-SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm install --ignore-scripts
-npm rebuild sharp
+npx cross-env SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm install --ignore-scripts
+
 
 # Or for normal installation:
 npm install
@@ -38,6 +38,8 @@ npm install
    ```env
    GEMINI_API_KEY=your_primary_api_key_here
    GEMINI_FALLBACK_API_KEY=your_backup_api_key_here (Optional)
+   AIzaSyAHj1jSrQgacIbs6kKKkzv7HkR_vFGX7Qw
+   AIzaSyDqPr05loKBzNz3n4itHxROES9BFSTLFBg
    ```
    
    **For Ollama (Local/Private AI):**
