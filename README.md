@@ -36,7 +36,8 @@ npm install
    
    **For Gemini (Cloud AI):**
    ```env
-   GEMINI_API_KEY=your_api_key_here
+   GEMINI_API_KEY=your_primary_api_key_here
+   GEMINI_FALLBACK_API_KEY=your_backup_api_key_here (Optional)
    ```
    
    **For Ollama (Local/Private AI):**

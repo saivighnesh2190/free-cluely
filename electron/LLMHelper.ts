@@ -15,7 +15,7 @@ export class LLMHelper {
   private geminiModel: string = "models/gemini-2.5-flash"
   private useOpenRouter: boolean = false
   private geminiApiKey: string = ""
-  private fallbackGeminiApiKey: string = "AIzaSyBexlvFU7FG0mrs9fQF28iKlojVaVxN1v4"
+  private fallbackGeminiApiKey: string = ""
   private usingFallbackKey: boolean = false
   private openRouterApiKey: string = ""
   private openRouterModel: string = "google/gemini-2.5-flash"
@@ -25,10 +25,11 @@ export class LLMHelper {
     this.useOllama = useOllama
     this.useOpenRouter = useOpenRouter
     this.geminiApiKey = (apiKey ?? "").trim() || process.env.GEMINI_API_KEY?.trim() || ""
+    this.fallbackGeminiApiKey = process.env.GEMINI_FALLBACK_API_KEY?.trim() || ""
 
-    // Safety: If no primary key is found, use the fallback key as the primary
-    if (!this.geminiApiKey && !this.useOllama && !this.useOpenRouter) {
-      console.log("[LLMHelper] No API key found in .env, using default fallback key.");
+    // Safety: If no primary key is found but a fallback key exists, use it
+    if (!this.geminiApiKey && this.fallbackGeminiApiKey && !this.useOllama && !this.useOpenRouter) {
+      console.log("[LLMHelper] No primary API key found, using fallback key as primary.");
       this.geminiApiKey = this.fallbackGeminiApiKey;
       this.usingFallbackKey = true;
     }
