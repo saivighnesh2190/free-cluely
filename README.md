@@ -38,7 +38,7 @@ npm install
    ```env
    GEMINI_API_KEY=your_primary_api_key_here
    GEMINI_FALLBACK_API_KEY=your_backup_api_key_here (Optional)
-   AIzaSyAHj1jSrQg
+   AIzaSyDHqiRnb
    
    ```
    
@@ -50,7 +50,7 @@ npm install
    ```
    
    - Save the file
-   - acIbs6kKKkzv7HkR_vFGX7Qw
+   - 688oVVAMxgX4PhW3mboHTHkk-A
 
 ### Running the App
 
