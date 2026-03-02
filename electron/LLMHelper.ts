@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai"
 import fs from "fs"
+import Tesseract from "tesseract.js"
 
 interface OllamaResponse {
   response: string
@@ -343,20 +344,41 @@ export class LLMHelper {
 
   public async extractProblemFromImages(imagePaths: string[]) {
     try {
-      // For OpenRouter/K2 Think, we can't analyze images directly, so we'll provide a text description
-      if (this.useOpenRouter || this.useK2Think) {
+      // For K2 Think: Use FREE LOCAL OCR (Tesseract.js) to extract text/context first
+      if (this.useK2Think) {
+        try {
+          console.log(`[LLMHelper] Starting Local OCR for ${imagePaths.length} image(s)...`);
+          const ocrResults = await Promise.all(imagePaths.map(path => Tesseract.recognize(path, 'eng')));
+          const extractedText = ocrResults.map(r => r.data.text).join("\n---\n");
+          console.log("[LLMHelper] Local OCR complete. Total extracted text length:", extractedText.length);
+
+          const prompt = `${this.systemPrompt}\n\nCONTEXT FROM SCREENSHOTS (EXTRACTED VIA LOCAL OCR):\n"""\n${extractedText}\n"""\n\nYou are a wingman. Please analyze these images (via the extracted text above) and extract the following information in JSON format:\n{
+  "problem_statement": "A clear statement of the problem or situation depicted in the images.",
+  "context": "Relevant background or context from the images.",
+  "suggested_responses": ["First possible answer or action", "Second possible answer or action", "..."],
+  "reasoning": "Explanation of why these suggestions are appropriate."
+}\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`;
+
+          const result = await this.callK2Think(prompt);
+          const parsed = JSON.parse(this.cleanJsonResponse(result));
+          return parsed;
+        } catch (e) {
+          console.error("[LLMHelper] Local OCR failed for problem extraction:", e);
+        }
+      }
+
+      // For OpenRouter, we still use basic guidance
+      if (this.useOpenRouter) {
         const imageCount = imagePaths.length;
         const prompt = `${this.systemPrompt}\n\nI have ${imageCount} screenshot(s) that I need help analyzing. Since I cannot see the images directly, please provide guidance on what information would be most helpful to extract from coding/problem-solving screenshots, and suggest a general approach for analyzing them.\n\nPlease provide your response in JSON format:\n{
   "problem_statement": "General guidance for analyzing coding screenshots",
   "context": "What to look for in coding screenshots",
   "suggested_responses": ["Approach 1", "Approach 2", "..."],
   "reasoning": "Why this guidance is helpful"
-}\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`
+}\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`;
 
-        const result = this.useK2Think
-          ? await this.callK2Think(prompt)
-          : await this.callOpenRouter(prompt);
-        const parsed = JSON.parse(result);
+        const result = await this.callOpenRouter(prompt);
+        const parsed = JSON.parse(this.cleanJsonResponse(result));
         return parsed;
       }
 
@@ -417,8 +439,34 @@ export class LLMHelper {
 
   public async debugSolutionWithImages(problemInfo: any, currentCode: string, debugImagePaths: string[]) {
     try {
-      // For OpenRouter/K2 Think, we can't analyze debug images directly, so we'll provide guidance
-      if (this.useOpenRouter || this.useK2Think) {
+      // For K2 Think: Use FREE LOCAL OCR (Tesseract.js) to extract debug info first
+      if (this.useK2Think) {
+        try {
+          console.log(`[LLMHelper] Starting Local OCR for ${debugImagePaths.length} debug image(s)...`);
+          const ocrResults = await Promise.all(debugImagePaths.map(path => Tesseract.recognize(path, 'eng')));
+          const extractedDebugText = ocrResults.map(r => r.data.text).join("\n---\n");
+          console.log("[LLMHelper] Debug Local OCR complete. Total text length:", extractedDebugText.length);
+
+          const prompt = `${this.systemPrompt}\n\nYou are a wingman. Given:\n1. The original problem: ${JSON.stringify(problemInfo, null, 2)}\n2. The current code/solution: ${currentCode}\n3. DEBUG CONTEXT FROM SCREENSHOTS (EXTRACTED VIA LOCAL OCR):\n"""\n${extractedDebugText}\n"""\n\nPlease analyze the debug information and provide feedback in this JSON format:\n{
+  "solution": {
+    "code": "The improved code or main answer here.",
+    "problem_statement": "Restate the problem or situation.",
+    "context": "Relevant background/context from debug info.",
+    "suggested_responses": ["First possible answer or action", "Second possible answer or action", "..."],
+    "reasoning": "Explanation of why these suggestions are appropriate."
+  }
+}\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`;
+
+          const result = await this.callK2Think(prompt);
+          const parsed = JSON.parse(this.cleanJsonResponse(result));
+          return parsed;
+        } catch (e) {
+          console.error("[LLMHelper] Local OCR failed for debug analysis:", e);
+        }
+      }
+
+      // For OpenRouter, we still use basic guidance
+      if (this.useOpenRouter) {
         const imageCount = debugImagePaths.length;
         const prompt = `${this.systemPrompt}\n\nYou are a wingman. Given:\n1. The original problem: ${JSON.stringify(problemInfo, null, 2)}\n2. The current code/solution: ${currentCode}\n3. I have ${imageCount} additional screenshot(s) showing debug/error information\n\nSince I cannot see the debug images directly, please provide general debugging guidance and suggest what information would be most helpful to see in debugging screenshots. Provide your response in this JSON format:\n{
   "solution": {
@@ -428,13 +476,11 @@ export class LLMHelper {
     "suggested_responses": ["Debug step 1", "Debug step 2", "..."],
     "reasoning": "Why these suggestions are appropriate"
   }
-}\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`
+}\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`;
 
-        const result = this.useK2Think
-          ? await this.callK2Think(prompt)
-          : await this.callOpenRouter(prompt);
-        const parsed = JSON.parse(result);
-        console.log("[LLMHelper] Parsed provider debug response:", parsed);
+        const result = await this.callOpenRouter(prompt);
+        const parsed = JSON.parse(this.cleanJsonResponse(result));
+        console.log("[LLMHelper] Parsed OpenRouter debug response:", parsed);
         return parsed;
       }
 
@@ -519,27 +565,19 @@ export class LLMHelper {
 
 Detect the content type automatically from the screenshot and respond with the most appropriate format. Be accurate, concise, and direct.${userQuestion ? ` The user specifically asked: "${userQuestion}"` : ""}`;
 
-      // For K2 Think: Use Gemini as "eyes" to extract text/context first
+      // For K2 Think: Use FREE LOCAL OCR (Tesseract.js) to extract text/context first
       if (this.useK2Think) {
         try {
-          const imageData = await fs.promises.readFile(imagePath);
-          const imagePart = {
-            inlineData: {
-              data: imageData.toString("base64"),
-              mimeType: "image/png"
-            }
-          };
-          const extractionPrompt = `ACT AS AN OCR AND CONTEXT EXTRACTOR. Extract all code, error messages, and text from this screenshot accurately. Provide a clear and detailed description of the problem shown. Format your output so it can be understood by another high-reasoning AI model.`;
+          console.log("[LLMHelper] Starting Local OCR with Tesseract.js...");
+          const ocrResult = await Tesseract.recognize(imagePath, 'eng');
+          const extractedText = ocrResult.data.text;
+          console.log("[LLMHelper] Local OCR complete. Extracted text length:", extractedText.length);
 
-          const extractionResult = await this.generateContentWithRetry([{ parts: [{ text: extractionPrompt }, imagePart] }]);
-          const extractedContext = extractionResult.candidates[0].content.parts[0].text;
-
-          const prompt = `${this.systemPrompt}\n\nCONTEXT FROM SCREENSHOT (EXTRACTED BY VISION MODEL):\n"""\n${extractedContext}\n"""\n\n${versatilePrompt}\n\nAnalyze the extracted content above and provide the best possible solution.`;
+          const prompt = `${this.systemPrompt}\n\nCONTEXT FROM SCREENSHOT (EXTRACTED VIA LOCAL OCR):\n"""\n${extractedText}\n"""\n\n${versatilePrompt}\n\nAnalyze the extracted content above and provide the best possible solution.`;
           const result = await this.callK2Think(prompt);
           return { text: result, timestamp: Date.now() };
         } catch (e) {
-          console.error("[LLMHelper] Vision pipeline failed, falling back to basic guidance:", e);
-          // Fallback to basic guidance if Gemini fails
+          console.error("[LLMHelper] Local OCR failed, falling back to basic guidance:", e);
         }
       }
 
