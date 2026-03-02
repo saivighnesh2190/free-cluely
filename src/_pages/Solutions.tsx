@@ -97,27 +97,62 @@ const SolutionSection = ({
             {content}
           </div>
         ) : (
-          <SyntaxHighlighter
-            showLineNumbers
-            language="python"
-            style={appearance === "black" ? dracula : oneLight}
-            customStyle={{
-              maxWidth: "100%",
-              margin: 0,
-              padding: "1rem",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              borderRadius: "0.75rem"
-            }}
-            wrapLongLines={true}
-          >
-            {content as string}
-          </SyntaxHighlighter>
+          <>
+            <ReasoningSection content={content as string} appearance={appearance} />
+            <SyntaxHighlighter
+              showLineNumbers
+              language="python"
+              style={appearance === "black" ? dracula : oneLight}
+              customStyle={{
+                maxWidth: "100%",
+                margin: 0,
+                padding: "1rem",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                borderRadius: "0.75rem"
+              }}
+              wrapLongLines={true}
+            >
+              {(content as string).replace(/<think>[\s\S]*?<\/think>/, "").trim()}
+            </SyntaxHighlighter>
+          </>
         )}
       </div>
     )}
   </div>
 )
+
+const ReasoningSection = ({
+  content,
+  appearance
+}: {
+  content: string
+  appearance: "transparent" | "black"
+}) => {
+  if (!content || !content.includes("<think>")) return null;
+
+  const thinkMatch = content.match(/<think>([\s\S]*?)<\/think>/);
+  if (!thinkMatch) return null;
+
+  const reasoning = thinkMatch[1].trim();
+
+  return (
+    <div className="space-y-2 mb-4">
+      <h2
+        className={`text-[12px] font-medium tracking-wide uppercase opacity-50 ${appearance === "black" ? "text-white" : "text-gray-900"
+          }`}
+      >
+        Thinking Process
+      </h2>
+      <div
+        className={`text-[12px] leading-[1.5] italic opacity-60 border-l-2 pl-4 transition-opacity hover:opacity-100 ${appearance === "black" ? "text-gray-400 border-white/10" : "text-gray-500 border-gray-300"
+          }`}
+      >
+        {reasoning}
+      </div>
+    </div>
+  );
+};
 
 export const ComplexitySection = ({
   timeComplexity,
@@ -509,8 +544,8 @@ const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
                     </h2>
                     <div
                       className={`text-[13px] leading-[1.6] whitespace-pre-wrap rounded-xl px-4 py-3 border ${appearance === "black"
-                          ? "bg-white/5 text-gray-100 border-white/15"
-                          : "bg-gray-100 text-gray-800 border-gray-200"
+                        ? "bg-white/5 text-gray-100 border-white/15"
+                        : "bg-gray-100 text-gray-800 border-gray-200"
                         }`}
                       style={{ fontFamily: "monospace", wordBreak: "break-word" }}
                     >

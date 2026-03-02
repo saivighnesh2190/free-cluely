@@ -503,9 +503,25 @@ export class LLMHelper {
 
   public async analyzeImageFile(imagePath: string, userQuestion?: string) {
     try {
+      const versatilePrompt = `Analyze this screenshot carefully and identify what type of content it contains, then answer accordingly:
+
+1. If it is a CODING/PROGRAMMING question (problem statement): Provide TWO Java solutions - a BRUTE FORCE approach and an OPTIMIZED approach. Include Time and Space complexity as comments. Check test cases and constraints carefully. Give only Java code.
+
+2. If it is a CODE SNIPPET (that needs debugging): Fix the bug by modifying the code MINIMALLY. Check if there is a "Debug Constraint" (e.g., max X characters modified) mentioned in the screenshot and adherent strictly to it. Provide the corrected code and briefly mention which lines were changed.
+
+3. If it is an APTITUDE/REASONING question (math, logical reasoning, puzzles, quantitative): Provide the correct answer with a clear step-by-step solution. Show the formula or method used.
+
+4. If it is a THEORETICAL/CONCEPTUAL question (definitions, concepts, explanations): Give a clear, concise, and accurate answer. Use bullet points if needed.
+
+5. If it is a TECHNICAL INTERVIEW question (system design, OS, DBMS, networking, OOP concepts): Provide a well-structured answer with key points, examples, and any relevant diagrams described in text.
+
+6. If it is a MULTIPLE CHOICE question (MCQ): Identify the correct option and explain why it is correct and why other options are wrong.
+
+Detect the content type automatically from the screenshot and respond with the most appropriate format. Be accurate, concise, and direct.${userQuestion ? ` The user specifically asked: "${userQuestion}"` : ""}`;
+
       // For OpenRouter/K2 Think, we can't analyze images directly
       if (this.useOpenRouter || this.useK2Think) {
-        const prompt = `${this.systemPrompt}\n\nI have a screenshot that I need help analyzing. Since I cannot see the image directly, please provide guidance on what information would be most helpful to extract from coding/problem-solving screenshots.\n\nAnalyze this screenshot. If there is a question or problem shown in the image, provide a direct answer or solution. If it's just an image without a clear question, describe the content briefly. Always be concise and helpful.`;
+        const prompt = `${this.systemPrompt}\n\nI have a screenshot that I need help analyzing. Since I cannot see the image directly, please provide guidance based on the following instructions:\n\n${versatilePrompt}\n\nAnalyze the context of this screenshot and provide the most helpful response possible.`;
 
         const result = this.useK2Think
           ? await this.callK2Think(prompt)
@@ -521,22 +537,7 @@ export class LLMHelper {
           mimeType: "image/png"
         }
       };
-      const prompt = `Analyze this screenshot carefully and identify what type of content it contains, then answer accordingly:
-
-1. If it is a CODING/PROGRAMMING question (problem statement): Provide TWO Java solutions - a BRUTE FORCE approach and an OPTIMIZED approach. Include Time and Space complexity as comments. Check test cases and constraints carefully. Give only Java code.
-
-2. If it is a CODE SNIPPET (that needs debugging): Fix the bug by modifying the code MINIMALLY. Check if there is a "Debug Constraint" (e.g., max X characters modified) mentioned in the screenshot and adherent strictly to it. Provide the corrected code and briefly mention which lines were changed.
-
-3. If it is an APTITUDE/REASONING question (math, logical reasoning, puzzles, quantitative): Provide the correct answer with a clear step-by-step solution. Show the formula or method used.
-
-4. If it is a THEORETICAL/CONCEPTUAL question (definitions, concepts, explanations): Give a clear, concise, and accurate answer. Use bullet points if needed.
-
-5. If it is a TECHNICAL INTERVIEW question (system design, OS, DBMS, networking, OOP concepts): Provide a well-structured answer with key points, examples, and any relevant diagrams described in text.
-
-6. If it is a MULTIPLE CHOICE question (MCQ): Identify the correct option and explain why it is correct and why other options are wrong.
-
-Detect the content type automatically from the screenshot and respond with the most appropriate format. Be accurate, concise, and direct.${userQuestion ? ` The user specifically asked: "${userQuestion}"` : ""}`;
-      const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }, imagePart] }]);
+      const result = await this.generateContentWithRetry([{ parts: [{ text: versatilePrompt }, imagePart] }]);
       const text = result.candidates[0].content.parts[0].text;
       return { text, timestamp: Date.now() };
     } catch (error) {
