@@ -3,6 +3,12 @@ import React, { useState, useEffect, useRef } from "react"
 import { useQuery, useQueryClient } from "react-query"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { dracula, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism"
+import ReactMarkdown from "react-markdown"
+import remarkMath from "remark-math"
+import rehypeKatex from "rehype-katex"
+import rehypeRaw from "rehype-raw"
+import remarkGfm from "remark-gfm"
+import "katex/dist/katex.min.css"
 
 import ScreenshotQueue from "../components/Queue/ScreenshotQueue"
 import {
@@ -44,15 +50,20 @@ export const ContentSection = ({
           className={`text-xs bg-gradient-to-r from-gray-300 via-gray-100 to-gray-300 bg-clip-text animate-pulse ${appearance === "black" ? "text-transparent" : "text-gray-500"
             }`}
         >
-          Extracting problem statement...
+          Extracting content...
         </p>
       </div>
     ) : (
       <div
-        className={`text-[13px] leading-[1.4] max-w-[600px] ${appearance === "black" ? "text-gray-100" : "text-gray-700"
+        className={`text-[13px] leading-[1.6] max-w-full markdown-content ${appearance === "black" ? "text-gray-100 prose-invert" : "text-gray-700"
           }`}
       >
-        {content}
+        <ReactMarkdown
+          remarkPlugins={[remarkMath, remarkGfm]}
+          rehypePlugins={[rehypeKatex, rehypeRaw]}
+        >
+          {content as string}
+        </ReactMarkdown>
       </div>
     )}
   </div>
@@ -97,25 +108,42 @@ const SolutionSection = ({
             {content}
           </div>
         ) : (
-          <>
-            <ReasoningSection content={content as string} appearance={appearance} />
-            <SyntaxHighlighter
-              showLineNumbers
-              language="python"
-              style={appearance === "black" ? dracula : oneLight}
-              customStyle={{
-                maxWidth: "100%",
-                margin: 0,
-                padding: "1rem",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                borderRadius: "0.75rem"
+          <div className={`markdown-content ${appearance === "black" ? "prose-invert" : ""}`}>
+            <ReactMarkdown
+              remarkPlugins={[remarkMath, remarkGfm]}
+              rehypePlugins={[rehypeKatex, rehypeRaw]}
+              components={{
+                code({ node, inline, className, children, ...props }: any) {
+                  const match = /language-(\w+)/.exec(className || "")
+                  return !inline && match ? (
+                    <SyntaxHighlighter
+                      style={appearance === "black" ? dracula : oneLight}
+                      language={match[1]}
+                      PreTag="div"
+                      {...props}
+                      customStyle={{
+                        maxWidth: "100%",
+                        margin: "1rem 0",
+                        padding: "1rem",
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                        borderRadius: "0.75rem"
+                      }}
+                      wrapLongLines={true}
+                    >
+                      {String(children).replace(/\n$/, "")}
+                    </SyntaxHighlighter>
+                  ) : (
+                    <code className={className} {...props}>
+                      {children}
+                    </code>
+                  )
+                }
               }}
-              wrapLongLines={true}
             >
-              {(content as string).replace(/<think>[\s\S]*?<\/think>/, "").trim()}
-            </SyntaxHighlighter>
-          </>
+              {content as string}
+            </ReactMarkdown>
+          </div>
         )}
       </div>
     )}
@@ -145,10 +173,15 @@ const ReasoningSection = ({
         Thinking Process
       </h2>
       <div
-        className={`text-[12px] leading-[1.5] italic opacity-60 border-l-2 pl-4 transition-opacity hover:opacity-100 ${appearance === "black" ? "text-gray-400 border-white/10" : "text-gray-500 border-gray-300"
+        className={`text-[12px] leading-[1.5] italic opacity-60 border-l-2 pl-4 transition-opacity hover:opacity-100 markdown-content ${appearance === "black" ? "text-gray-400 border-white/10 prose-invert" : "text-gray-500 border-gray-300"
           }`}
       >
-        {reasoning}
+        <ReactMarkdown
+          remarkPlugins={[remarkMath, remarkGfm]}
+          rehypePlugins={[rehypeKatex, rehypeRaw]}
+        >
+          {reasoning}
+        </ReactMarkdown>
       </div>
     </div>
   );
@@ -543,13 +576,17 @@ const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
                       {problemStatementData?.output_format?.subtype === "voice" ? "Audio Result" : "Screenshot Result"}
                     </h2>
                     <div
-                      className={`text-[13px] leading-[1.6] whitespace-pre-wrap rounded-xl px-4 py-3 border ${appearance === "black"
-                        ? "bg-white/5 text-gray-100 border-white/15"
+                      className={`text-[13px] leading-[1.6] rounded-xl px-4 py-3 border markdown-content ${appearance === "black"
+                        ? "bg-white/5 text-gray-100 border-white/15 prose-invert"
                         : "bg-gray-100 text-gray-800 border-gray-200"
                         }`}
-                      style={{ fontFamily: "monospace", wordBreak: "break-word" }}
                     >
-                      {problemStatementData.problem_statement}
+                      <ReactMarkdown
+                        remarkPlugins={[remarkMath, remarkGfm]}
+                        rehypePlugins={[rehypeKatex, rehypeRaw]}
+                      >
+                        {problemStatementData.problem_statement}
+                      </ReactMarkdown>
                     </div>
                   </div>
                 ) : (
@@ -578,18 +615,13 @@ const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
                           title="Analysis"
                           content={
                             thoughtsData && (
-                              <div className="space-y-3">
-                                <div className="space-y-1">
-                                  {thoughtsData.map((thought, index) => (
-                                    <div
-                                      key={index}
-                                      className="flex items-start gap-2"
-                                    >
-                                      <div className="w-1 h-1 rounded-full bg-blue-400/80 mt-2 shrink-0" />
-                                      <div>{thought}</div>
-                                    </div>
-                                  ))}
-                                </div>
+                              <div className="space-y-1 markdown-content prose-compact">
+                                <ReactMarkdown
+                                  remarkPlugins={[remarkMath, remarkGfm]}
+                                  rehypePlugins={[rehypeKatex, rehypeRaw]}
+                                >
+                                  {thoughtsData.map(t => `* ${t}`).join("\n")}
+                                </ReactMarkdown>
                               </div>
                             )
                           }
