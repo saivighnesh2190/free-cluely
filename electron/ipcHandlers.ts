@@ -219,6 +219,17 @@ export function initializeIpcHandlers(appState: AppState): void {
     }
   });
 
+  ipcMain.handle("switch-to-k2think", async (_, apiKey?: string, model?: string) => {
+    try {
+      const llmHelper = appState.processingHelper.getLLMHelper();
+      await llmHelper.switchToK2Think(apiKey, model);
+      return { success: true };
+    } catch (error: any) {
+      console.error("Error switching to K2 Think:", error);
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle("test-llm-connection", async () => {
     try {
       const llmHelper = appState.processingHelper.getLLMHelper();

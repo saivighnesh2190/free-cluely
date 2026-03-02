@@ -36,15 +36,16 @@ interface ElectronAPI {
   processVoiceRecording: (data: string, mimeType: string) => Promise<{ transcript: string; interpretation: any; problemInfo: any; solution: any }>
   quitApp: () => Promise<void>
   setScreenshotQuestion: (path: string, question: string) => Promise<{ success: boolean; error?: string }>
-  
+
   // LLM Model Management
-  getCurrentLlmConfig: () => Promise<{ provider: "ollama" | "gemini" | "openrouter"; model: string; isOllama: boolean; isOpenRouter: boolean }>
+  getCurrentLlmConfig: () => Promise<{ provider: "ollama" | "gemini" | "openrouter" | "k2think"; model: string; isOllama: boolean; isOpenRouter: boolean }>
   getAvailableOllamaModels: () => Promise<string[]>
   switchToOllama: (model?: string, url?: string) => Promise<{ success: boolean; error?: string }>
   switchToGemini: (apiKey?: string, model?: string) => Promise<{ success: boolean; error?: string }>
   switchToOpenRouter: (apiKey: string, model?: string) => Promise<{ success: boolean; error?: string }>
+  switchToK2Think: (apiKey?: string, model?: string) => Promise<{ success: boolean; error?: string }>
   testLlmConnection: () => Promise<{ success: boolean; error?: string }>
-  
+
   invoke: (channel: string, ...args: any[]) => Promise<any>
 }
 
@@ -184,14 +185,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   processVoiceRecording: (data: string, mimeType: string) => ipcRenderer.invoke("process-voice-recording", data, mimeType),
   quitApp: () => ipcRenderer.invoke("quit-app"),
   setScreenshotQuestion: (path: string, question: string) => ipcRenderer.invoke("set-screenshot-question", path, question),
-  
+
   // LLM Model Management
   getCurrentLlmConfig: () => ipcRenderer.invoke("get-current-llm-config"),
   getAvailableOllamaModels: () => ipcRenderer.invoke("get-available-ollama-models"),
   switchToOllama: (model?: string, url?: string) => ipcRenderer.invoke("switch-to-ollama", model, url),
   switchToGemini: (apiKey?: string, model?: string) => ipcRenderer.invoke("switch-to-gemini", apiKey, model),
   switchToOpenRouter: (apiKey: string, model?: string) => ipcRenderer.invoke("switch-to-openrouter", apiKey, model),
+  switchToK2Think: (apiKey?: string, model?: string) => ipcRenderer.invoke("switch-to-k2think", apiKey, model),
   testLlmConnection: () => ipcRenderer.invoke("test-llm-connection"),
-  
+
   invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args)
 } as ElectronAPI)
