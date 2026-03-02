@@ -26,6 +26,15 @@ import { useAppearance } from "../context/AppearanceContext"
 
 // (Using global ElectronAPI type from src/types/electron.d.ts)
 
+const preprocessLaTeX = (content: string) => {
+  if (typeof content !== 'string') return content;
+  return content
+    .replace(/\\\[/g, '$$$$')
+    .replace(/\\\]/g, '$$$$')
+    .replace(/\\\(/g, '$$')
+    .replace(/\\\)/g, '$$');
+};
+
 export const ContentSection = ({
   title,
   content,
@@ -62,7 +71,7 @@ export const ContentSection = ({
           remarkPlugins={[remarkMath, remarkGfm]}
           rehypePlugins={[rehypeKatex, rehypeRaw]}
         >
-          {content as string}
+          {preprocessLaTeX(content as string)}
         </ReactMarkdown>
       </div>
     )}
@@ -141,7 +150,7 @@ const SolutionSection = ({
                 }
               }}
             >
-              {content as string}
+              {preprocessLaTeX(content as string)}
             </ReactMarkdown>
           </div>
         )}
@@ -180,7 +189,7 @@ const ReasoningSection = ({
           remarkPlugins={[remarkMath, remarkGfm]}
           rehypePlugins={[rehypeKatex, rehypeRaw]}
         >
-          {reasoning}
+          {preprocessLaTeX(reasoning)}
         </ReactMarkdown>
       </div>
     </div>
@@ -585,7 +594,7 @@ const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
                         remarkPlugins={[remarkMath, remarkGfm]}
                         rehypePlugins={[rehypeKatex, rehypeRaw]}
                       >
-                        {problemStatementData.problem_statement}
+                        {preprocessLaTeX(problemStatementData.problem_statement)}
                       </ReactMarkdown>
                     </div>
                   </div>
@@ -620,7 +629,7 @@ const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
                                   remarkPlugins={[remarkMath, remarkGfm]}
                                   rehypePlugins={[rehypeKatex, rehypeRaw]}
                                 >
-                                  {thoughtsData.map(t => `* ${t}`).join("\n")}
+                                  {preprocessLaTeX(thoughtsData.map(t => `* ${t}`).join("\n"))}
                                 </ReactMarkdown>
                               </div>
                             )

@@ -16,6 +16,7 @@ CRITICAL: You MUST use Markdown for all responses.
 2. Use LaTeX for ALL mathematical formulas and equations. 
    - Use double dollar signs for block equations: $$x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}$$
    - Use single dollar signs for inline math: $E=mc^2$
+   - ONLY use $ and $$ as delimiters. NEVER use \\(...\\) or \\[...\\].
 3. Use code blocks with language specification for any code snippets.
 4. For any user input, analyze the situation, provide a clear problem statement, relevant context, and suggest several possible responses or actions the user could take next. 
 5. Always explain your reasoning.`
