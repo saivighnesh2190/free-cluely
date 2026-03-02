@@ -14,18 +14,23 @@ export class LLMHelper {
   private ollamaUrl: string = "http://localhost:11434"
   private geminiModel: string = "models/gemini-2.5-flash"
   private useOpenRouter: boolean = false
+  private useK2Think: boolean = false
   private geminiApiKey: string = ""
   private fallbackGeminiApiKey: string = ""
   private usingFallbackKey: boolean = false
   private openRouterApiKey: string = ""
   private openRouterModel: string = "google/gemini-2.5-flash"
+  private k2ThinkApiKey: string = ""
+  private k2ThinkModel: string = "MBZUAI-IFM/K2-Think-v2"
   private geminiVoiceClient: GoogleGenAI | null = null
 
   constructor(apiKey?: string, useOllama: boolean = false, ollamaModel?: string, ollamaUrl?: string, useOpenRouter: boolean = false, openRouterApiKey?: string, openRouterModel?: string) {
     this.useOllama = useOllama
     this.useOpenRouter = useOpenRouter
+    this.useK2Think = process.env.USE_K2_THINK === "true"
     this.geminiApiKey = (apiKey ?? "").trim() || process.env.GEMINI_API_KEY?.trim() || ""
     this.fallbackGeminiApiKey = process.env.GEMINI_FALLBACK_API_KEY?.trim() || ""
+    this.k2ThinkApiKey = process.env.K2_THINK_API_KEY?.trim() || ""
 
     // Safety: If no primary key is found but a fallback key exists, use it
     if (!this.geminiApiKey && this.fallbackGeminiApiKey && !this.useOllama && !this.useOpenRouter) {
@@ -41,6 +46,8 @@ export class LLMHelper {
 
     if (useOpenRouter) {
       console.log(`[LLMHelper] Using OpenRouter with model: ${this.openRouterModel}`)
+    } else if (this.useK2Think) {
+      console.log(`[LLMHelper] Using K2 Think V2 with model: ${this.k2ThinkModel}`)
     } else if (useOllama) {
       this.ollamaUrl = ollamaUrl || "http://localhost:11434"
       this.ollamaModel = ollamaModel || "gemma:latest" // Default fallback
@@ -51,8 +58,8 @@ export class LLMHelper {
     } else if (this.geminiApiKey) {
       this.model = new GoogleGenAI({ apiKey: this.geminiApiKey })
       console.log("[LLMHelper] Using Google Gemini")
-    } else {
-      throw new Error("Either provide Gemini API key, enable Ollama mode, or provide OpenRouter API key")
+    } else if (!this.k2ThinkApiKey) {
+      throw new Error("Either provide Gemini API key, enable Ollama mode, enable K2 Think, or provide OpenRouter API key")
     }
   }
 
@@ -249,9 +256,47 @@ export class LLMHelper {
 
       const data = await response.json()
       return data.choices[0]?.message?.content || ''
-    } catch (error) {
+    } catch (error: any) {
       console.error("[LLMHelper] Error calling OpenRouter:", error)
       throw new Error(`Failed to connect to OpenRouter: ${error.message}`)
+    }
+  }
+
+  private async callK2Think(prompt: string): Promise<string> {
+    if (!this.k2ThinkApiKey) {
+      throw new Error("K2 Think API key is not configured");
+    }
+
+    try {
+      const response = await fetch("https://api.k2think.ai/v1/chat/completions", {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.k2ThinkApiKey}`,
+          'accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: this.k2ThinkModel,
+          messages: [
+            {
+              role: "user",
+              content: prompt
+            }
+          ],
+          stream: false
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(`K2 Think API error: ${response.status} ${response.statusText}. ${errorData.message || ''}`)
+      }
+
+      const data = await response.json()
+      return data.choices[0]?.message?.content || ''
+    } catch (error: any) {
+      console.error("[LLMHelper] Error calling K2 Think:", error)
+      throw new Error(`Failed to connect to K2 Think: ${error.message}`)
     }
   }
 
@@ -298,8 +343,8 @@ export class LLMHelper {
 
   public async extractProblemFromImages(imagePaths: string[]) {
     try {
-      // For OpenRouter, we can't analyze images directly, so we'll provide a text description
-      if (this.useOpenRouter) {
+      // For OpenRouter/K2 Think, we can't analyze images directly, so we'll provide a text description
+      if (this.useOpenRouter || this.useK2Think) {
         const imageCount = imagePaths.length;
         const prompt = `${this.systemPrompt}\n\nI have ${imageCount} screenshot(s) that I need help analyzing. Since I cannot see the images directly, please provide guidance on what information would be most helpful to extract from coding/problem-solving screenshots, and suggest a general approach for analyzing them.\n\nPlease provide your response in JSON format:\n{
   "problem_statement": "General guidance for analyzing coding screenshots",
@@ -308,7 +353,9 @@ export class LLMHelper {
   "reasoning": "Why this guidance is helpful"
 }\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`
 
-        const result = await this.callOpenRouter(prompt);
+        const result = this.useK2Think
+          ? await this.callK2Think(prompt)
+          : await this.callOpenRouter(prompt);
         const parsed = JSON.parse(result);
         return parsed;
       }
@@ -346,7 +393,10 @@ export class LLMHelper {
     console.log("[LLMHelper] Calling LLM for solution...");
     try {
       let result;
-      if (this.useOpenRouter) {
+      if (this.useK2Think) {
+        result = await this.callK2Think(prompt);
+        console.log("[LLMHelper] K2 Think LL returned result.");
+      } else if (this.useOpenRouter) {
         result = await this.callOpenRouter(prompt);
         console.log("[LLMHelper] OpenRouter LLM returned result.");
       } else {
@@ -367,8 +417,8 @@ export class LLMHelper {
 
   public async debugSolutionWithImages(problemInfo: any, currentCode: string, debugImagePaths: string[]) {
     try {
-      // For OpenRouter, we can't analyze debug images directly, so we'll provide guidance
-      if (this.useOpenRouter) {
+      // For OpenRouter/K2 Think, we can't analyze debug images directly, so we'll provide guidance
+      if (this.useOpenRouter || this.useK2Think) {
         const imageCount = debugImagePaths.length;
         const prompt = `${this.systemPrompt}\n\nYou are a wingman. Given:\n1. The original problem: ${JSON.stringify(problemInfo, null, 2)}\n2. The current code/solution: ${currentCode}\n3. I have ${imageCount} additional screenshot(s) showing debug/error information\n\nSince I cannot see the debug images directly, please provide general debugging guidance and suggest what information would be most helpful to see in debugging screenshots. Provide your response in this JSON format:\n{
   "solution": {
@@ -380,9 +430,11 @@ export class LLMHelper {
   }
 }\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`
 
-        const result = await this.callOpenRouter(prompt);
+        const result = this.useK2Think
+          ? await this.callK2Think(prompt)
+          : await this.callOpenRouter(prompt);
         const parsed = JSON.parse(result);
-        console.log("[LLMHelper] Parsed OpenRouter debug response:", parsed);
+        console.log("[LLMHelper] Parsed provider debug response:", parsed);
         return parsed;
       }
 
@@ -451,11 +503,13 @@ export class LLMHelper {
 
   public async analyzeImageFile(imagePath: string, userQuestion?: string) {
     try {
-      // For OpenRouter, we can't analyze images directly
-      if (this.useOpenRouter) {
+      // For OpenRouter/K2 Think, we can't analyze images directly
+      if (this.useOpenRouter || this.useK2Think) {
         const prompt = `${this.systemPrompt}\n\nI have a screenshot that I need help analyzing. Since I cannot see the image directly, please provide guidance on what information would be most helpful to extract from coding/problem-solving screenshots.\n\nAnalyze this screenshot. If there is a question or problem shown in the image, provide a direct answer or solution. If it's just an image without a clear question, describe the content briefly. Always be concise and helpful.`;
 
-        const result = await this.callOpenRouter(prompt);
+        const result = this.useK2Think
+          ? await this.callK2Think(prompt)
+          : await this.callOpenRouter(prompt);
         return { text: result, timestamp: Date.now() };
       }
 
@@ -493,7 +547,9 @@ Detect the content type automatically from the screenshot and respond with the m
 
   public async chatWithGemini(message: string): Promise<string> {
     try {
-      if (this.useOpenRouter) {
+      if (this.useK2Think) {
+        return this.callK2Think(message);
+      } else if (this.useOpenRouter) {
         return this.callOpenRouter(message);
       } else if (this.useOllama) {
         return this.callOllama(message);
@@ -537,12 +593,14 @@ Detect the content type automatically from the screenshot and respond with the m
     }
   }
 
-  public getCurrentProvider(): "ollama" | "gemini" | "openrouter" {
+  public getCurrentProvider(): "ollama" | "gemini" | "openrouter" | "k2think" {
+    if (this.useK2Think) return "k2think";
     if (this.useOpenRouter) return "openrouter";
     return this.useOllama ? "ollama" : "gemini";
   }
 
   public getCurrentModel(): string {
+    if (this.useK2Think) return this.k2ThinkModel;
     if (this.useOpenRouter) return this.openRouterModel;
     return this.useOllama ? this.ollamaModel : this.geminiModel;
   }
@@ -592,13 +650,37 @@ Detect the content type automatically from the screenshot and respond with the m
     }
 
     this.useOllama = false;
+    this.useK2Think = false;
     this.useOpenRouter = true;
     console.log(`[LLMHelper] Switched to OpenRouter: ${this.openRouterModel}`);
   }
 
+  public async switchToK2Think(apiKey?: string, model?: string): Promise<void> {
+    const resolvedKey = (apiKey ?? "").trim() || this.k2ThinkApiKey;
+    if (!resolvedKey) {
+      throw new Error("K2 Think API key is required");
+    }
+
+    this.k2ThinkApiKey = resolvedKey;
+    if (model) {
+      this.k2ThinkModel = model;
+    }
+
+    this.useOllama = false;
+    this.useOpenRouter = false;
+    this.useK2Think = true;
+    console.log(`[LLMHelper] Switched to K2 Think V2: ${this.k2ThinkModel}`);
+  }
+
   public async testConnection(): Promise<{ success: boolean; error?: string }> {
     try {
-      if (this.useOpenRouter) {
+      if (this.useK2Think) {
+        if (!this.k2ThinkApiKey) {
+          return { success: false, error: "No K2 Think API key configured" };
+        }
+        await this.callK2Think("Hello");
+        return { success: true };
+      } else if (this.useOpenRouter) {
         if (!this.openRouterApiKey) {
           return { success: false, error: "No OpenRouter API key configured" };
         }

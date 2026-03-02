@@ -19,17 +19,24 @@ export class ProcessingHelper {
 
   constructor(appState: AppState) {
     this.appState = appState
-    
+
     // Check if user wants to use Ollama
     const useOllama = process.env.USE_OLLAMA === "true"
     const ollamaModel = process.env.OLLAMA_MODEL // Don't set default here, let LLMHelper auto-detect
     const ollamaUrl = process.env.OLLAMA_URL || "http://localhost:11434"
-    
+
     // Check for OpenRouter API key (prioritize this)
     const openRouterApiKey = process.env.OPENROUTER_API_KEY
     const openRouterModel = process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash"
-    
-    if (useOllama) {
+
+    // Check for K2 Think V2
+    const useK2Think = process.env.USE_K2_THINK === "true"
+    const k2ThinkApiKey = process.env.K2_THINK_API_KEY
+
+    if (useK2Think && k2ThinkApiKey) {
+      console.log("[ProcessingHelper] Initializing with K2 Think V2")
+      this.llmHelper = new LLMHelper(undefined, false, undefined, undefined, false, undefined, undefined)
+    } else if (useOllama) {
       console.log("[ProcessingHelper] Initializing with Ollama")
       this.llmHelper = new LLMHelper(undefined, true, ollamaModel, ollamaUrl)
     } else if (openRouterApiKey) {
@@ -38,7 +45,7 @@ export class ProcessingHelper {
     } else {
       const apiKey = process.env.GEMINI_API_KEY
       if (!apiKey) {
-        throw new Error("Neither OPENROUTER_API_KEY nor GEMINI_API_KEY found in environment variables. Set OPENROUTER_API_KEY, GEMINI_API_KEY, or enable Ollama with USE_OLLAMA=true")
+        throw new Error("Neither K2_THINK_API_KEY, OPENROUTER_API_KEY, nor GEMINI_API_KEY found in environment variables.")
       }
       console.log("[ProcessingHelper] Initializing with Gemini")
       this.llmHelper = new LLMHelper(apiKey, false)

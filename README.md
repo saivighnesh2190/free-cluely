@@ -41,11 +41,23 @@ npm install
    AIzaSyDHqiRnb
    
    ```
+
+   **For K2 Think V2 (High Reasoning AI):**
+   ```env
+   K2_THINK_API_KEY=your_k2_think_api_key_here
+   USE_K2_THINK=true
+   ```
+
+   **For OpenRouter:**
+   ```env
+   OPENROUTER_API_KEY=your_openrouter_api_key_here
+   OPENROUTER_MODEL=google/gemini-2.5-flash
+   ```
    
    **For Ollama (Local/Private AI):**
    ```env
    USE_OLLAMA=true
-   OLLAMA_MODEL=llama3.2
+   OLLAMA_MODEL=gemma:latest
    OLLAMA_URL=http://localhost:11434
    ```
    
