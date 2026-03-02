@@ -519,13 +519,34 @@ export class LLMHelper {
 
 Detect the content type automatically from the screenshot and respond with the most appropriate format. Be accurate, concise, and direct.${userQuestion ? ` The user specifically asked: "${userQuestion}"` : ""}`;
 
-      // For OpenRouter/K2 Think, we can't analyze images directly
-      if (this.useOpenRouter || this.useK2Think) {
-        const prompt = `${this.systemPrompt}\n\nI have a screenshot that I need help analyzing. Since I cannot see the image directly, please provide guidance based on the following instructions:\n\n${versatilePrompt}\n\nAnalyze the context of this screenshot and provide the most helpful response possible.`;
+      // For K2 Think: Use Gemini as "eyes" to extract text/context first
+      if (this.useK2Think) {
+        try {
+          const imageData = await fs.promises.readFile(imagePath);
+          const imagePart = {
+            inlineData: {
+              data: imageData.toString("base64"),
+              mimeType: "image/png"
+            }
+          };
+          const extractionPrompt = `ACT AS AN OCR AND CONTEXT EXTRACTOR. Extract all code, error messages, and text from this screenshot accurately. Provide a clear and detailed description of the problem shown. Format your output so it can be understood by another high-reasoning AI model.`;
 
-        const result = this.useK2Think
-          ? await this.callK2Think(prompt)
-          : await this.callOpenRouter(prompt);
+          const extractionResult = await this.generateContentWithRetry([{ parts: [{ text: extractionPrompt }, imagePart] }]);
+          const extractedContext = extractionResult.candidates[0].content.parts[0].text;
+
+          const prompt = `${this.systemPrompt}\n\nCONTEXT FROM SCREENSHOT (EXTRACTED BY VISION MODEL):\n"""\n${extractedContext}\n"""\n\n${versatilePrompt}\n\nAnalyze the extracted content above and provide the best possible solution.`;
+          const result = await this.callK2Think(prompt);
+          return { text: result, timestamp: Date.now() };
+        } catch (e) {
+          console.error("[LLMHelper] Vision pipeline failed, falling back to basic guidance:", e);
+          // Fallback to basic guidance if Gemini fails
+        }
+      }
+
+      // For OpenRouter, we still use basic guidance for now
+      if (this.useOpenRouter) {
+        const prompt = `${this.systemPrompt}\n\nI have a screenshot that I need help analyzing. Since I cannot see the image directly, please provide guidance based on the following instructions:\n\n${versatilePrompt}\n\nAnalyze the context of this screenshot and provide the most helpful response possible.`;
+        const result = await this.callOpenRouter(prompt);
         return { text: result, timestamp: Date.now() };
       }
 
