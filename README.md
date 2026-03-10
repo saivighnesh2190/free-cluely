@@ -25,6 +25,7 @@ cd free-cluely
 ```bash
 # If you encounter Sharp/Python build errors, use this:
 npx cross-env SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm install --ignore-scripts
+AIzaSyC7lH-8E9i
 
 
 # Or for normal installation:
@@ -44,6 +45,7 @@ npm install
    ```env
    K2_THINK_API_KEY=your_k2_think_api_key_here
    USE_K2_THINK=true
+   7uhvHh5BCiD4zoBzt26DIoa0
    ```
 
    **For OpenRouter:**
