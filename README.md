@@ -52,6 +52,7 @@ npm install
    ```env
    OPENROUTER_API_KEY=your_openrouter_api_key_here
    OPENROUTER_MODEL=google/gemini-2.5-flash
+   IFM-Qfd1LfNz
    ```
    
    **For Ollama (Local/Private AI):**
@@ -59,6 +60,7 @@ npm install
    USE_OLLAMA=true
    OLLAMA_MODEL=gemma:latest
    OLLAMA_URL=http://localhost:11434
+   sEwU6GjC
    ```
    
    - Save the file
