@@ -37,9 +37,7 @@ npm install
    **For Gemini (Cloud AI):**
    ```env
    GEMINI_API_KEY=your_primary_api_key_here
-   GEMINI_FALLBACK_API_KEY=your_backup_api_key_here (Optional)
-   AIzaSyDHqiRnb
-   
+   GEMINI_FALLBACK_API_KEY=your_backup_api_key_here
    ```
 
    **For K2 Think V2 (High Reasoning AI):**
@@ -62,7 +60,6 @@ npm install
    ```
    
    - Save the file
-   - 688oVVAMxgX4PhW3mboHTHkk-A
 
 ### Running the App
 

@@ -28,11 +28,22 @@ import { useAppearance } from "../context/AppearanceContext"
 
 const preprocessLaTeX = (content: string) => {
   if (typeof content !== 'string') return content;
-  return content
+
+  let processed = content
+    // Convert \[...\] to $$...$$
     .replace(/\\\[/g, '$$$$')
     .replace(/\\\]/g, '$$$$')
+    // Convert \(...\) to $...$
     .replace(/\\\(/g, '$$')
-    .replace(/\\\)/g, '$$');
+    .replace(/\\\)/g, '$$')
+    // Detect bare LaTeX environments (like \begin{cases}) that aren't wrapped in delimiters
+    // and wrap them in $$ if they aren't already.
+    .replace(/(^|\n)(\\begin\{[a-z\*]+\}[\s\S]*?\\end\{[a-z\*]+\})/g, (match, p1, p2) => {
+      // Check if it's already inside $$ or $ (very basic check)
+      return `${p1}$$$$\n${p2}\n$$$$`;
+    });
+
+  return processed;
 };
 
 export const ContentSection = ({
