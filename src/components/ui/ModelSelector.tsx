@@ -2,31 +2,25 @@ import React, { useState, useEffect } from 'react';
 import { useAppearance } from '../../context/AppearanceContext';
 
 interface ModelConfig {
-  provider: "ollama" | "gemini" | "openrouter" | "k2think";
+  provider: "gemini" | "k2think";
   model: string;
-  isOllama: boolean;
 }
 
 interface ModelSelectorProps {
-  onModelChange?: (provider: "ollama" | "gemini" | "openrouter" | "k2think", model: string) => void;
+  onModelChange?: (provider: "gemini" | "k2think", model: string) => void;
   onChatOpen?: () => void;
 }
 
 const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen }) => {
   const [currentConfig, setCurrentConfig] = useState<ModelConfig | null>(null);
-  const [availableOllamaModels, setAvailableOllamaModels] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState<'testing' | 'success' | 'error' | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [geminiApiKey, setGeminiApiKey] = useState('');
-  const [selectedProvider, setSelectedProvider] = useState<"ollama" | "gemini" | "openrouter" | "k2think">("gemini");
-  const [selectedOllamaModel, setSelectedOllamaModel] = useState<string>("");
+  const [selectedProvider, setSelectedProvider] = useState<"gemini" | "k2think">("gemini");
   const [selectedGeminiModel, setSelectedGeminiModel] = useState<string>("models/gemini-2.5-flash");
-  const [selectedOpenRouterModel, setSelectedOpenRouterModel] = useState<string>("google/gemini-2.5-flash");
   const [selectedK2ThinkModel, setSelectedK2ThinkModel] = useState<string>("MBZUAI-IFM/K2-Think-v2");
-  const [openRouterApiKey, setOpenRouterApiKey] = useState('');
   const [k2ThinkApiKey, setK2ThinkApiKey] = useState('');
-  const [ollamaUrl, setOllamaUrl] = useState<string>("http://localhost:11434");
   const { appearance } = useAppearance();
   const isBlack = appearance === "black";
 
@@ -41,12 +35,10 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
   const currentBadgeClass = `text-xs rounded px-2 py-2 border ${isBlack ? "text-gray-200 bg-white/5 border-white/10" : "text-gray-600 bg-white/40 border-white/50"
     }`;
   const infoTextClass = `text-xs space-y-1 ${isBlack ? "text-gray-300" : "text-gray-600"}`;
-  const helperCardClass = `text-xs rounded px-3 py-2 ${isBlack ? "text-gray-300 bg-white/10 border border-white/15" : "text-gray-600 bg-yellow-100/60"
-    }`;
 
   const inputBaseClass = `w-full px-3 py-2 text-xs rounded border focus:outline-none ${isBlack
-      ? "bg-white/10 border-white/20 text-gray-100 placeholder-gray-400"
-      : "bg-white/40 border-white/60 text-gray-800 placeholder-gray-500"
+    ? "bg-white/10 border-white/20 text-gray-100 placeholder-gray-400"
+    : "bg-white/40 border-white/60 text-gray-800 placeholder-gray-500"
     }`;
 
   const inactiveProviderClass = isBlack
@@ -64,12 +56,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
       setCurrentConfig(config);
       setSelectedProvider(config.provider);
 
-      if (config.provider === 'ollama') {
-        setSelectedOllamaModel(config.model);
-        await loadOllamaModels();
-      } else if (config.provider === 'openrouter') {
-        setSelectedOpenRouterModel(config.model);
-      } else if (config.provider === 'k2think') {
+      if (config.provider === 'k2think') {
         setSelectedK2ThinkModel(config.model);
       } else {
         setSelectedGeminiModel(config.model || "models/gemini-2.5-flash");
@@ -78,21 +65,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
       console.error('Error loading current config:', error);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const loadOllamaModels = async () => {
-    try {
-      const models = await window.electronAPI.getAvailableOllamaModels();
-      setAvailableOllamaModels(models);
-
-      // Auto-select first model if none selected
-      if (models.length > 0 && !selectedOllamaModel) {
-        setSelectedOllamaModel(models[0]);
-      }
-    } catch (error) {
-      console.error('Error loading Ollama models:', error);
-      setAvailableOllamaModels([]);
     }
   };
 
@@ -115,11 +87,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
       setConnectionStatus('testing');
       let result;
 
-      if (selectedProvider === 'ollama') {
-        result = await window.electronAPI.switchToOllama(selectedOllamaModel, ollamaUrl);
-      } else if (selectedProvider === 'openrouter') {
-        result = await window.electronAPI.switchToOpenRouter(openRouterApiKey, selectedOpenRouterModel);
-      } else if (selectedProvider === 'k2think') {
+      if (selectedProvider === 'k2think') {
         result = await window.electronAPI.switchToK2Think(k2ThinkApiKey || undefined, selectedK2ThinkModel);
       } else {
         result = await window.electronAPI.switchToGemini(geminiApiKey || undefined, selectedGeminiModel);
@@ -130,10 +98,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
         setConnectionStatus('success');
         onModelChange?.(
           selectedProvider,
-          selectedProvider === 'ollama' ? selectedOllamaModel :
-            selectedProvider === 'openrouter' ? selectedOpenRouterModel :
-              selectedProvider === 'k2think' ? selectedK2ThinkModel :
-                selectedGeminiModel
+          selectedProvider === 'k2think' ? selectedK2ThinkModel : selectedGeminiModel
         );
         // Auto-open chat window after successful model change
         setTimeout(() => {
@@ -194,9 +159,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
       {currentConfig && (
         <div className={currentBadgeClass}>
           Current: {
-            currentConfig.provider === 'ollama' ? '🏠' :
-              currentConfig.provider === 'openrouter' ? '🌐' :
-                currentConfig.provider === 'k2think' ? '🧠' : '☁️'
+            currentConfig.provider === 'k2think' ? '🧠' : '☁️'
           } {currentConfig.model}
         </div>
       )}
@@ -208,8 +171,8 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
           <button
             onClick={() => setSelectedProvider('gemini')}
             className={`px-3 py-2 rounded text-xs transition-all ${selectedProvider === 'gemini'
-                ? 'bg-blue-500 text-white shadow-md'
-                : inactiveProviderClass
+              ? 'bg-blue-500 text-white shadow-md'
+              : inactiveProviderClass
               }`}
           >
             ☁️ Gemini
@@ -217,29 +180,11 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
           <button
             onClick={() => setSelectedProvider('k2think')}
             className={`px-3 py-2 rounded text-xs transition-all ${selectedProvider === 'k2think'
-                ? 'bg-orange-500 text-white shadow-md'
-                : inactiveProviderClass
+              ? 'bg-orange-500 text-white shadow-md'
+              : inactiveProviderClass
               }`}
           >
             🧠 K2 Think
-          </button>
-          <button
-            onClick={() => setSelectedProvider('openrouter')}
-            className={`px-3 py-2 rounded text-xs transition-all ${selectedProvider === 'openrouter'
-                ? 'bg-purple-500 text-white shadow-md'
-                : inactiveProviderClass
-              }`}
-          >
-            🌐 OpenRouter
-          </button>
-          <button
-            onClick={() => setSelectedProvider('ollama')}
-            className={`px-3 py-2 rounded text-xs transition-all ${selectedProvider === 'ollama'
-                ? 'bg-green-500 text-white shadow-md'
-                : inactiveProviderClass
-              }`}
-          >
-            🏠 Ollama
           </button>
         </div>
       </div>
@@ -268,7 +213,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
             </select>
           </div>
         </div>
-      ) : selectedProvider === 'k2think' ? (
+      ) : (
         <div className="space-y-2">
           <label className={labelClass}>K2 Think API Key (optional if already set)</label>
           <input
@@ -290,76 +235,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
             </select>
           </div>
         </div>
-      ) : selectedProvider === 'openrouter' ? (
-        <div className="space-y-2">
-          <label className={labelClass}>OpenRouter API Key</label>
-          <input
-            type="password"
-            placeholder="Enter your OpenRouter API key..."
-            value={openRouterApiKey}
-            onChange={(e) => setOpenRouterApiKey(e.target.value)}
-            className={`${inputBaseClass} focus:ring-2 focus:ring-purple-400/60`}
-          />
-
-          <div>
-            <label className={labelClass}>Model</label>
-            <select
-              value={selectedOpenRouterModel}
-              onChange={(e) => setSelectedOpenRouterModel(e.target.value)}
-              className={`${inputBaseClass} mt-1 focus:ring-2 focus:ring-purple-400/60`}
-            >
-              <option value="google/gemini-2.5-flash">Gemini 2.5 Flash</option>
-              <option value="google/gemini-2.5-pro">Gemini 2.5 Pro</option>
-              <option value="moonshotai/kimi-k2:free">Moonshot AI Kimi K2 (Free)</option>
-              <option value="anthropic/claude-3-haiku:beta">Claude 3 Haiku (Beta)</option>
-              <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
-            </select>
-          </div>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <div>
-            <label className={labelClass}>Ollama URL</label>
-            <input
-              type="url"
-              value={ollamaUrl}
-              onChange={(e) => setOllamaUrl(e.target.value)}
-              className={`${inputBaseClass} focus:ring-2 focus:ring-green-400/60`}
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center gap-2">
-              <label className={labelClass}>Model</label>
-              <button
-                onClick={loadOllamaModels}
-                className={`px-2 py-1 text-xs rounded transition-all ${isBlack ? 'bg-white/10 text-gray-200 hover:bg-white/20 border border-white/10' : 'bg-white/60 hover:bg-white/80'
-                  }`}
-                title="Refresh models"
-              >
-                🔄
-              </button>
-            </div>
-
-            {availableOllamaModels.length > 0 ? (
-              <select
-                value={selectedOllamaModel}
-                onChange={(e) => setSelectedOllamaModel(e.target.value)}
-                className={`${inputBaseClass} focus:ring-2 focus:ring-green-400/60`}
-              >
-                {availableOllamaModels.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className={helperCardClass}>
-                No Ollama models found. Make sure Ollama is running and models are installed.
-              </div>
-            )}
-          </div>
-        </div>
       )}
 
       {/* Action buttons */}
@@ -368,8 +243,8 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
           onClick={handleProviderSwitch}
           disabled={connectionStatus === 'testing'}
           className={`flex-1 px-3 py-2 text-xs rounded transition-all shadow-md text-white ${connectionStatus === 'testing'
-              ? 'bg-gray-400'
-              : 'bg-blue-500 hover:bg-blue-600'
+            ? 'bg-gray-400'
+            : 'bg-blue-500 hover:bg-blue-600'
             }`}
         >
           {connectionStatus === 'testing' ? 'Switching...' : 'Apply Changes'}
@@ -379,10 +254,10 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
           onClick={testConnection}
           disabled={connectionStatus === 'testing'}
           className={`px-3 py-2 text-xs rounded transition-all shadow-md text-white ${connectionStatus === 'testing'
-              ? 'bg-gray-400'
-              : isBlack
-                ? 'bg-gray-600 hover:bg-gray-500'
-                : 'bg-gray-500 hover:bg-gray-600'
+            ? 'bg-gray-400'
+            : isBlack
+              ? 'bg-gray-600 hover:bg-gray-500'
+              : 'bg-gray-500 hover:bg-gray-600'
             }`}
         >
           Test
@@ -393,8 +268,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
       <div className={infoTextClass}>
         <div>💡 <strong>Gemini:</strong> Fast, cloud-based, requires API key</div>
         <div>💡 <strong>K2 Think:</strong> High-reasoning AI, requires API key</div>
-        <div>💡 <strong>OpenRouter:</strong> Access to multiple AI models, requires API key</div>
-        <div>💡 <strong>Ollama:</strong> Private, local, requires Ollama installation</div>
       </div>
     </div>
   );

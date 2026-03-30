@@ -165,9 +165,7 @@ export function initializeIpcHandlers(appState: AppState): void {
       const llmHelper = appState.processingHelper.getLLMHelper();
       return {
         provider: llmHelper.getCurrentProvider(),
-        model: llmHelper.getCurrentModel(),
-        isOllama: llmHelper.isUsingOllama(),
-        isOpenRouter: llmHelper.isUsingOpenRouter()
+        model: llmHelper.getCurrentModel()
       };
     } catch (error: any) {
       console.error("Error getting current LLM config:", error);
@@ -175,27 +173,6 @@ export function initializeIpcHandlers(appState: AppState): void {
     }
   });
 
-  ipcMain.handle("get-available-ollama-models", async () => {
-    try {
-      const llmHelper = appState.processingHelper.getLLMHelper();
-      const models = await llmHelper.getOllamaModels();
-      return models;
-    } catch (error: any) {
-      console.error("Error getting Ollama models:", error);
-      throw error;
-    }
-  });
-
-  ipcMain.handle("switch-to-ollama", async (_, model?: string, url?: string) => {
-    try {
-      const llmHelper = appState.processingHelper.getLLMHelper();
-      await llmHelper.switchToOllama(model, url);
-      return { success: true };
-    } catch (error: any) {
-      console.error("Error switching to Ollama:", error);
-      return { success: false, error: error.message };
-    }
-  });
 
   ipcMain.handle("switch-to-gemini", async (_, apiKey?: string, model?: string) => {
     try {
@@ -204,17 +181,6 @@ export function initializeIpcHandlers(appState: AppState): void {
       return { success: true };
     } catch (error: any) {
       console.error("Error switching to Gemini:", error);
-      return { success: false, error: error.message };
-    }
-  });
-
-  ipcMain.handle("switch-to-openrouter", async (_, apiKey: string, model?: string) => {
-    try {
-      const llmHelper = appState.processingHelper.getLLMHelper();
-      await llmHelper.switchToOpenRouter(apiKey, model);
-      return { success: true };
-    } catch (error: any) {
-      console.error("Error switching to OpenRouter:", error);
       return { success: false, error: error.message };
     }
   });

@@ -38,11 +38,8 @@ interface ElectronAPI {
   setScreenshotQuestion: (path: string, question: string) => Promise<{ success: boolean; error?: string }>
 
   // LLM Model Management
-  getCurrentLlmConfig: () => Promise<{ provider: "ollama" | "gemini" | "openrouter" | "k2think"; model: string; isOllama: boolean; isOpenRouter: boolean }>
-  getAvailableOllamaModels: () => Promise<string[]>
-  switchToOllama: (model?: string, url?: string) => Promise<{ success: boolean; error?: string }>
+  getCurrentLlmConfig: () => Promise<{ provider: "gemini" | "k2think"; model: string }>
   switchToGemini: (apiKey?: string, model?: string) => Promise<{ success: boolean; error?: string }>
-  switchToOpenRouter: (apiKey: string, model?: string) => Promise<{ success: boolean; error?: string }>
   switchToK2Think: (apiKey?: string, model?: string) => Promise<{ success: boolean; error?: string }>
   testLlmConnection: () => Promise<{ success: boolean; error?: string }>
 
@@ -188,10 +185,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // LLM Model Management
   getCurrentLlmConfig: () => ipcRenderer.invoke("get-current-llm-config"),
-  getAvailableOllamaModels: () => ipcRenderer.invoke("get-available-ollama-models"),
-  switchToOllama: (model?: string, url?: string) => ipcRenderer.invoke("switch-to-ollama", model, url),
   switchToGemini: (apiKey?: string, model?: string) => ipcRenderer.invoke("switch-to-gemini", apiKey, model),
-  switchToOpenRouter: (apiKey: string, model?: string) => ipcRenderer.invoke("switch-to-openrouter", apiKey, model),
   switchToK2Think: (apiKey?: string, model?: string) => ipcRenderer.invoke("switch-to-k2think", apiKey, model),
   testLlmConnection: () => ipcRenderer.invoke("test-llm-connection"),
 
