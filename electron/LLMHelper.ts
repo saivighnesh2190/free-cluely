@@ -523,16 +523,14 @@ Detect the content type automatically from the screenshot and respond with the m
       throw new Error("No Gemini API key provided and no existing model instance");
     }
 
-    if (!this.model || apiKey) {
-      this.model = new GoogleGenAI({ apiKey: resolvedKey });
-    }
+    this.model = new GoogleGenAI({ apiKey: resolvedKey });
     this.geminiApiKey = resolvedKey;
-
     this.useK2Think = false;
+
     if (model) {
       this.geminiModel = model;
     }
-    console.log("[LLMHelper] Switched to Gemini");
+    console.log(`[LLMHelper] Switched to Gemini (useK2Think=${this.useK2Think}, model=${this.geminiModel})`);
   }
 
   public async switchToK2Think(apiKey?: string, model?: string): Promise<void> {
