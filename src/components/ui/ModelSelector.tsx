@@ -209,7 +209,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
               className={`${inputBaseClass} mt-1 focus:ring-2 focus:ring-blue-400/60`}
             >
               <option value="models/gemini-2.5-flash">Gemini 2.5 Flash (default)</option>
-              <option value="models/gemini-2.5-pro">Gemini 2.5 Pro</option>
+              <option value="models/gemini-3-flash">Gemini 3 Flash</option>
             </select>
           </div>
         </div>
