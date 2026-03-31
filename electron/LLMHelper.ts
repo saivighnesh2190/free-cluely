@@ -24,7 +24,7 @@ CRITICAL: You MUST use Markdown for all responses.
   private usingFallbackKey: boolean = false
   private k2ThinkApiKey: string = ""
   private k2ThinkModel: string = "MBZUAI-IFM/K2-Think-v2"
-  private geminiVoiceClient: GoogleGenAI | null = null
+
 
   constructor(apiKey?: string) {
     this.useK2Think = process.env.USE_K2_THINK === "true"
@@ -76,20 +76,13 @@ CRITICAL: You MUST use Markdown for all responses.
   private async getGeminiClient(): Promise<GoogleGenAI> {
     const apiKey = this.resolveGeminiApiKey()
     if (!apiKey) {
-      throw new Error("Gemini API key is required for voice features")
+      throw new Error("Gemini API key is required")
     }
 
-    if (!this.useOllama && !this.useOpenRouter) {
-      if (!this.model) {
-        this.model = new GoogleGenAI({ apiKey })
-      }
-      return this.model
+    if (!this.model) {
+      this.model = new GoogleGenAI({ apiKey })
     }
-
-    if (!this.geminiVoiceClient) {
-      this.geminiVoiceClient = new GoogleGenAI({ apiKey })
-    }
-    return this.geminiVoiceClient
+    return this.model
   }
 
   private async generateContentWithRetry(contents: any, model?: string, client?: GoogleGenAI): Promise<any> {
@@ -248,22 +241,7 @@ CRITICAL: You MUST use Markdown for all responses.
         }
       }
 
-      // For OpenRouter, we still use basic guidance
-      if (this.useOpenRouter) {
-        const imageCount = imagePaths.length;
-        const prompt = `${this.systemPrompt}\n\nI have ${imageCount} screenshot(s) that I need help analyzing. Since I cannot see the images directly, please provide guidance on what information would be most helpful to extract from coding/problem-solving screenshots, and suggest a general approach for analyzing them.\n\nPlease provide your response in JSON format:\n{
-  "problem_statement": "General guidance for analyzing coding screenshots",
-  "context": "What to look for in coding screenshots",
-  "suggested_responses": ["Approach 1", "Approach 2", "..."],
-  "reasoning": "Why this guidance is helpful"
-}\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`;
-
-        const result = await this.callOpenRouter(prompt);
-        const parsed = JSON.parse(this.cleanJsonResponse(result));
-        return parsed;
-      }
-
-      // Original Gemini implementation for image analysis
+      // Gemini implementation for image analysis
       const imageParts = await Promise.all(imagePaths.map(path => this.fileToGenerativePart(path)))
 
       const prompt = `${this.systemPrompt}\n\nYou are a wingman. Please analyze these images and extract the following information in JSON format:\n{
@@ -361,26 +339,7 @@ CRITICAL: You MUST use Markdown for all responses.
         }
       }
 
-      // For OpenRouter, we still use basic guidance
-      if (this.useOpenRouter) {
-        const imageCount = debugImagePaths.length;
-        const prompt = `${this.systemPrompt}\n\nYou are a wingman. Given:\n1. The original problem: ${JSON.stringify(problemInfo, null, 2)}\n2. The current code/solution: ${currentCode}\n3. I have ${imageCount} additional screenshot(s) showing debug/error information\n\nSince I cannot see the debug images directly, please provide general debugging guidance and suggest what information would be most helpful to see in debugging screenshots. Provide your response in this JSON format:\n{
-  "solution": {
-    "code": "Improved code or debugging suggestions",
-    "problem_statement": "Restate the problem",
-    "context": "What debugging information would be helpful",
-    "suggested_responses": ["Debug step 1", "Debug step 2", "..."],
-    "reasoning": "Why these suggestions are appropriate"
-  }
-}\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`;
-
-        const result = await this.callOpenRouter(prompt);
-        const parsed = JSON.parse(this.cleanJsonResponse(result));
-        console.log("[LLMHelper] Parsed OpenRouter debug response:", parsed);
-        return parsed;
-      }
-
-      // Original Gemini implementation for image analysis
+      // Gemini implementation for debug image analysis
       const imageParts = await Promise.all(debugImagePaths.map(path => this.fileToGenerativePart(path)))
 
       const prompt = `${this.systemPrompt}\n\nYou are a wingman. Given:\n1. The original problem or situation: ${JSON.stringify(problemInfo, null, 2)}\n2. The current response or approach: ${currentCode}\n3. The debug information in the provided images\n\nPlease analyze the debug information and provide feedback in this JSON format:\n{
