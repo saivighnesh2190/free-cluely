@@ -46,11 +46,11 @@ npm install
    K2_THINK_API_KEY=your_k2_think_api_key_here
    USE_K2_THINK=true
    7uhvHh5BCiD4zoBzt26DIoa0
-   AIzaSyDPVCgLLBvn
+   AIzaSyB0Hj0Y9H-z
    ```
 
    **For OpenRouter:**
-   4ugG2B5LSzmHd1vMlVTdyKU
+   JjKw41b5yRZB-VwaLKyDBhY
    ```env
    OPENROUTER_API_KEY=your_openrouter_api_key_here
    OPENROUTER_MODEL=google/gemini-2.5-flash
