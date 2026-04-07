@@ -17,7 +17,7 @@ CRITICAL: You MUST use Markdown for all responses.
 3. Use code blocks with language specification for any code snippets.
 4. For any user input, analyze the situation, provide a clear problem statement, relevant context, and suggest several possible responses or actions the user could take next. 
 5. Always explain your reasoning.`
-  private geminiModel: string = "models/gemini-2.5-flash"
+  private geminiModel: string = "models/gemini-3-flash-preview"
   private useK2Think: boolean = false
   private geminiApiKey: string = ""
   private fallbackGeminiApiKey: string = ""
@@ -86,48 +86,219 @@ CRITICAL: You MUST use Markdown for all responses.
   }
 
   private async generateContentWithRetry(contents: any, model?: string, client?: GoogleGenAI): Promise<any> {
-    const maxRetries = 3;
-    let delay = 1000; // Start with 1 second
+    const targetClient = client ?? this.model
+    if (!targetClient) {
+      throw new Error("No LLM client configured")
+    }
 
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const targetClient = client ?? this.model
-        if (!targetClient) {
-          throw new Error("No LLM client configured")
-        }
-
-        const result = await targetClient.models.generateContent({
+    try {
+      const result = await targetClient.models.generateContent({
+        model: model || this.geminiModel,
+        contents: contents
+      });
+      return result;
+    } catch (error: any) {
+      const errorMessage = error.message || '';
+      // For 503 overloaded, retry once with delay
+      if (errorMessage.includes('503')) {
+        console.log(`[LLMHelper] Model overloaded, retrying in 2s...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return targetClient.models.generateContent({
           model: model || this.geminiModel,
           contents: contents
         });
-        return result;
-      } catch (error: any) {
-        const errorMessage = error.message || '';
-        const isRateLimitError = errorMessage.includes('429') ||
-          errorMessage.includes('quota') ||
-          errorMessage.includes('RATE_LIMIT') ||
-          errorMessage.includes('RESOURCE_EXHAUSTED');
-
-        // If rate limit hit and we have a fallback key, switch to it
-        if (isRateLimitError && !this.usingFallbackKey && this.fallbackGeminiApiKey) {
-          console.log(`[LLMHelper] Rate limit hit, switching to fallback API key...`);
-          this.geminiApiKey = this.fallbackGeminiApiKey;
-          this.model = new GoogleGenAI({ apiKey: this.fallbackGeminiApiKey });
-          this.usingFallbackKey = true;
-          // Retry with the new key
-          continue;
-        }
-
-        if (errorMessage.includes('503') && attempt < maxRetries - 1) {
-          console.log(`[LLMHelper] Model overloaded, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          delay *= 2; // Exponential backoff
-        } else {
-          throw error;
-        }
       }
+      throw error;
     }
   }
+
+  /**
+   * 5-Tier Fallback Chain for text-only prompts:
+   * 1. Gemini 3 Flash (Primary Key)
+   * 2. Gemini 2.5 Flash (Primary Key) — separate model quota
+   * 3. K2 Think V2 — completely different provider
+   * 4. Gemini 3 Flash (Fallback Key) — fresh project quota
+   * 5. Gemini 2.5 Flash (Fallback Key) — absolute last resort
+   */
+  private async callTextWithFallback(prompt: string): Promise<string> {
+    const errors: string[] = [];
+
+    // Build fallback chain
+    const chain: { name: string; call: () => Promise<string> }[] = [];
+
+    // Determine primary model order based on user's selected provider
+    const primaryModel = this.geminiModel; // e.g. "models/gemini-3-flash-preview"
+    const secondaryModel = primaryModel.includes("3-flash")
+      ? "models/gemini-2.5-flash"
+      : "models/gemini-3-flash-preview";
+
+    // Tier 1: Primary model with primary key
+    if (this.geminiApiKey) {
+      chain.push({
+        name: `${primaryModel} (primary key)`,
+        call: async () => {
+          const client = new GoogleGenAI({ apiKey: this.geminiApiKey });
+          const result = await this.generateContentWithRetry(prompt, primaryModel, client);
+          return result.candidates[0].content.parts[0].text;
+        }
+      });
+    }
+
+    // Tier 2: Secondary Gemini model with primary key (separate quota!)
+    if (this.geminiApiKey) {
+      chain.push({
+        name: `${secondaryModel} (primary key)`,
+        call: async () => {
+          const client = new GoogleGenAI({ apiKey: this.geminiApiKey });
+          const result = await this.generateContentWithRetry(prompt, secondaryModel, client);
+          return result.candidates[0].content.parts[0].text;
+        }
+      });
+    }
+
+    // Tier 3: K2 Think — completely different provider
+    if (this.k2ThinkApiKey) {
+      chain.push({
+        name: "K2 Think V2",
+        call: async () => this.callK2Think(prompt)
+      });
+    }
+
+    // Tier 4: Primary model with fallback key
+    if (this.fallbackGeminiApiKey && this.fallbackGeminiApiKey !== this.geminiApiKey) {
+      chain.push({
+        name: `${primaryModel} (fallback key)`,
+        call: async () => {
+          const client = new GoogleGenAI({ apiKey: this.fallbackGeminiApiKey });
+          const result = await this.generateContentWithRetry(prompt, primaryModel, client);
+          return result.candidates[0].content.parts[0].text;
+        }
+      });
+    }
+
+    // Tier 5: Secondary model with fallback key
+    if (this.fallbackGeminiApiKey && this.fallbackGeminiApiKey !== this.geminiApiKey) {
+      chain.push({
+        name: `${secondaryModel} (fallback key)`,
+        call: async () => {
+          const client = new GoogleGenAI({ apiKey: this.fallbackGeminiApiKey });
+          const result = await this.generateContentWithRetry(prompt, secondaryModel, client);
+          return result.candidates[0].content.parts[0].text;
+        }
+      });
+    }
+
+    // Execute chain
+    for (let i = 0; i < chain.length; i++) {
+      const tier = chain[i];
+      try {
+        console.log(`[LLMHelper] Trying Tier ${i + 1}/${chain.length}: ${tier.name}`);
+        const result = await tier.call();
+        if (i > 0) console.log(`[LLMHelper] ✅ Tier ${i + 1} succeeded after ${i} failure(s)`);
+        return result;
+      } catch (error: any) {
+        const msg = error.message || String(error);
+        errors.push(`Tier ${i + 1} (${tier.name}): ${msg}`);
+        console.warn(`[LLMHelper] ❌ Tier ${i + 1} failed: ${msg}`);
+      }
+    }
+
+    throw new Error(`All ${chain.length} providers failed:\n${errors.join('\n')}`);
+  }
+
+  /**
+   * 5-Tier Fallback Chain for image-based prompts (Gemini gets images, K2 Think gets OCR text)
+   */
+  private async callImageWithFallback(promptText: string, imagePaths: string[]): Promise<string> {
+    const errors: string[] = [];
+
+    // Prepare image data for Gemini
+    const imageParts = await Promise.all(imagePaths.map(path => this.fileToGenerativePart(path)));
+    const geminiContents = [{ parts: [{ text: promptText }, ...imageParts] }];
+
+    // Build fallback chain
+    const chain: { name: string; call: () => Promise<string> }[] = [];
+
+    const primaryModel = this.geminiModel;
+    const secondaryModel = primaryModel.includes("3-flash")
+      ? "models/gemini-2.5-flash"
+      : "models/gemini-3-flash-preview";
+
+    // Tier 1: Primary model with primary key (direct image)
+    if (this.geminiApiKey) {
+      chain.push({
+        name: `${primaryModel} (primary key)`,
+        call: async () => {
+          const client = new GoogleGenAI({ apiKey: this.geminiApiKey });
+          const result = await this.generateContentWithRetry(geminiContents, primaryModel, client);
+          return result.candidates[0].content.parts[0].text;
+        }
+      });
+    }
+
+    // Tier 2: Secondary Gemini model 
+    if (this.geminiApiKey) {
+      chain.push({
+        name: `${secondaryModel} (primary key)`,
+        call: async () => {
+          const client = new GoogleGenAI({ apiKey: this.geminiApiKey });
+          const result = await this.generateContentWithRetry(geminiContents, secondaryModel, client);
+          return result.candidates[0].content.parts[0].text;
+        }
+      });
+    }
+
+    // Tier 3: K2 Think with OCR
+    if (this.k2ThinkApiKey) {
+      chain.push({
+        name: "K2 Think V2 (with OCR)",
+        call: async () => {
+          const ocrResults = await Promise.all(imagePaths.map(path => Tesseract.recognize(path, 'eng')));
+          const extractedText = ocrResults.map(r => r.data.text).join("\n---\n");
+          const ocrPrompt = `${promptText}\n\nCONTEXT FROM SCREENSHOTS (EXTRACTED VIA LOCAL OCR):\n"""\n${extractedText}\n"""`;
+          return this.callK2Think(ocrPrompt);
+        }
+      });
+    }
+
+    // Tier 4 & 5: Fallback key models
+    if (this.fallbackGeminiApiKey && this.fallbackGeminiApiKey !== this.geminiApiKey) {
+      chain.push({
+        name: `${primaryModel} (fallback key)`,
+        call: async () => {
+          const client = new GoogleGenAI({ apiKey: this.fallbackGeminiApiKey });
+          const result = await this.generateContentWithRetry(geminiContents, primaryModel, client);
+          return result.candidates[0].content.parts[0].text;
+        }
+      });
+      chain.push({
+        name: `${secondaryModel} (fallback key)`,
+        call: async () => {
+          const client = new GoogleGenAI({ apiKey: this.fallbackGeminiApiKey });
+          const result = await this.generateContentWithRetry(geminiContents, secondaryModel, client);
+          return result.candidates[0].content.parts[0].text;
+        }
+      });
+    }
+
+    // Execute chain
+    for (let i = 0; i < chain.length; i++) {
+      const tier = chain[i];
+      try {
+        console.log(`[LLMHelper] Trying Tier ${i + 1}/${chain.length}: ${tier.name}`);
+        const result = await tier.call();
+        if (i > 0) console.log(`[LLMHelper] ✅ Tier ${i + 1} succeeded after ${i} failure(s)`);
+        return result;
+      } catch (error: any) {
+        const msg = error.message || String(error);
+        errors.push(`Tier ${i + 1} (${tier.name}): ${msg}`);
+        console.warn(`[LLMHelper] ❌ Tier ${i + 1} failed: ${msg}`);
+      }
+    }
+
+    throw new Error(`All ${chain.length} providers failed:\n${errors.join('\n')}`);
+  }
+
 
   private cleanJsonResponse(text: string): string {
     // Remove markdown code block syntax if present
@@ -218,32 +389,6 @@ CRITICAL: You MUST use Markdown for all responses.
 
   public async extractProblemFromImages(imagePaths: string[]) {
     try {
-      // For K2 Think: Use FREE LOCAL OCR (Tesseract.js) to extract text/context first
-      if (this.useK2Think) {
-        try {
-          console.log(`[LLMHelper] Starting Local OCR for ${imagePaths.length} image(s)...`);
-          const ocrResults = await Promise.all(imagePaths.map(path => Tesseract.recognize(path, 'eng')));
-          const extractedText = ocrResults.map(r => r.data.text).join("\n---\n");
-          console.log("[LLMHelper] Local OCR complete. Total extracted text length:", extractedText.length);
-
-          const prompt = `${this.systemPrompt}\n\nCONTEXT FROM SCREENSHOTS (EXTRACTED VIA LOCAL OCR):\n"""\n${extractedText}\n"""\n\nYou are a wingman. Please analyze these images (via the extracted text above) and extract the following information in JSON format:\n{
-  "problem_statement": "A clear statement of the problem or situation depicted in the images.",
-  "context": "Relevant background or context from the images.",
-  "suggested_responses": ["First possible answer or action", "Second possible answer or action", "..."],
-  "reasoning": "Explanation of why these suggestions are appropriate."
-}\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`;
-
-          const result = await this.callK2Think(prompt);
-          const parsed = JSON.parse(this.cleanJsonResponse(result));
-          return parsed;
-        } catch (e) {
-          console.error("[LLMHelper] Local OCR failed for problem extraction:", e);
-        }
-      }
-
-      // Gemini implementation for image analysis
-      const imageParts = await Promise.all(imagePaths.map(path => this.fileToGenerativePart(path)))
-
       const prompt = `${this.systemPrompt}\n\nYou are a wingman. Please analyze these images and extract the following information in JSON format:\n{
   "problem_statement": "A clear statement of the problem or situation depicted in the images.",
   "context": "Relevant background or context from the images.",
@@ -251,9 +396,8 @@ CRITICAL: You MUST use Markdown for all responses.
   "reasoning": "Explanation of why these suggestions are appropriate."
 }\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`
 
-      const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }, ...imageParts] }])
-      const text = this.cleanJsonResponse(result.candidates[0].content.parts[0].text)
-      return JSON.parse(text)
+      const result = await this.callImageWithFallback(prompt, imagePaths);
+      return JSON.parse(this.cleanJsonResponse(result));
     } catch (error) {
       console.error("Error extracting problem from images:", error)
       throw error
@@ -271,36 +415,9 @@ CRITICAL: You MUST use Markdown for all responses.
   }
 }\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`
 
-    console.log("[LLMHelper] Calling LLM for solution...");
+    console.log("[LLMHelper] Calling LLM for solution (5-tier fallback chain)...");
     try {
-      let result;
-      if (this.useK2Think) {
-        try {
-          result = await this.callK2Think(prompt);
-          console.log("[LLMHelper] K2 Think returned result.");
-        } catch (k2Error: any) {
-          console.warn(`[LLMHelper] K2 Think failed (${k2Error.message}), falling back to Gemini...`);
-          if (!this.model) await this.getGeminiClient();
-          const geminiResult = await this.generateContentWithRetry(prompt);
-          result = geminiResult.candidates[0].content.parts[0].text;
-          console.log("[LLMHelper] Gemini fallback returned result.");
-        }
-      } else {
-        try {
-          const geminiResult = await this.generateContentWithRetry(prompt);
-          result = geminiResult.candidates[0].content.parts[0].text;
-          console.log("[LLMHelper] Gemini returned result.");
-        } catch (geminiError: any) {
-          if (this.k2ThinkApiKey) {
-            console.warn(`[LLMHelper] Gemini failed (${geminiError.message}), falling back to K2 Think...`);
-            result = await this.callK2Think(prompt);
-            console.log("[LLMHelper] K2 Think fallback returned result.");
-          } else {
-            throw geminiError;
-          }
-        }
-      }
-
+      const result = await this.callTextWithFallback(prompt);
       const text = this.cleanJsonResponse(result);
       const parsed = JSON.parse(text);
       console.log("[LLMHelper] Parsed LLM response:", parsed);
@@ -313,35 +430,6 @@ CRITICAL: You MUST use Markdown for all responses.
 
   public async debugSolutionWithImages(problemInfo: any, currentCode: string, debugImagePaths: string[]) {
     try {
-      // For K2 Think: Use FREE LOCAL OCR (Tesseract.js) to extract debug info first
-      if (this.useK2Think) {
-        try {
-          console.log(`[LLMHelper] Starting Local OCR for ${debugImagePaths.length} debug image(s)...`);
-          const ocrResults = await Promise.all(debugImagePaths.map(path => Tesseract.recognize(path, 'eng')));
-          const extractedDebugText = ocrResults.map(r => r.data.text).join("\n---\n");
-          console.log("[LLMHelper] Debug Local OCR complete. Total text length:", extractedDebugText.length);
-
-          const prompt = `${this.systemPrompt}\n\nYou are a wingman. Given:\n1. The original problem: ${JSON.stringify(problemInfo, null, 2)}\n2. The current code/solution: ${currentCode}\n3. DEBUG CONTEXT FROM SCREENSHOTS (EXTRACTED VIA LOCAL OCR):\n"""\n${extractedDebugText}\n"""\n\nPlease analyze the debug information and provide feedback in this JSON format:\n{
-  "solution": {
-    "code": "The improved code or main answer here.",
-    "problem_statement": "Restate the problem or situation.",
-    "context": "Relevant background/context from debug info.",
-    "suggested_responses": ["First possible answer or action", "Second possible answer or action", "..."],
-    "reasoning": "Explanation of why these suggestions are appropriate."
-  }
-}\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`;
-
-          const result = await this.callK2Think(prompt);
-          const parsed = JSON.parse(this.cleanJsonResponse(result));
-          return parsed;
-        } catch (e) {
-          console.error("[LLMHelper] Local OCR failed for debug analysis:", e);
-        }
-      }
-
-      // Gemini implementation for debug image analysis
-      const imageParts = await Promise.all(debugImagePaths.map(path => this.fileToGenerativePart(path)))
-
       const prompt = `${this.systemPrompt}\n\nYou are a wingman. Given:\n1. The original problem or situation: ${JSON.stringify(problemInfo, null, 2)}\n2. The current response or approach: ${currentCode}\n3. The debug information in the provided images\n\nPlease analyze the debug information and provide feedback in this JSON format:\n{
   "solution": {
     "code": "The code or main answer here.",
@@ -352,11 +440,10 @@ CRITICAL: You MUST use Markdown for all responses.
   }
 }\nImportant: Return ONLY the JSON object, without any markdown formatting or code blocks.`
 
-      const result = await this.generateContentWithRetry([{ parts: [{ text: prompt }, ...imageParts] }])
-      const text = this.cleanJsonResponse(result.candidates[0].content.parts[0].text)
-      const parsed = JSON.parse(text)
-      console.log("[LLMHelper] Parsed debug LLM response:", parsed)
-      return parsed
+      const result = await this.callImageWithFallback(prompt, debugImagePaths);
+      const parsed = JSON.parse(this.cleanJsonResponse(result));
+      console.log("[LLMHelper] Parsed debug LLM response:", parsed);
+      return parsed;
     } catch (error) {
       console.error("Error debugging solution with images:", error)
       throw error
@@ -406,7 +493,7 @@ CRITICAL: You MUST use Markdown for all responses.
     try {
       const versatilePrompt = `Analyze this screenshot carefully and identify what type of content it contains, then answer accordingly:
 
-1. If it is a CODING/PROGRAMMING question (problem statement): Provide TWO Java solutions - a BRUTE FORCE approach and an OPTIMIZED approach. Include Time and Space complexity as comments. Check test cases and constraints carefully. Give only Java code.
+1. If it is a CODING/PROGRAMMING question (problem statement): First, detect the programming language from the screenshot (look for language indicators, syntax, or code editor hints). If a specific language is visible (e.g., C++, Python, C, JavaScript, etc.), provide the solution in THAT language only. If no language is specified or detected, default to Java. Provide TWO solutions - a BRUTE FORCE approach and an OPTIMIZED approach. Include Time and Space complexity as comments. Check test cases and constraints carefully.
 
 2. If it is a CODE SNIPPET (that needs debugging): Fix the bug by modifying the code MINIMALLY. Check if there is a "Debug Constraint" (e.g., max X characters modified) mentioned in the screenshot and adherent strictly to it. Provide the corrected code and briefly mention which lines were changed.
 
@@ -420,52 +507,8 @@ CRITICAL: You MUST use Markdown for all responses.
 
 Detect the content type automatically from the screenshot and respond with the most appropriate format. Be accurate, concise, and direct.${userQuestion ? ` The user specifically asked: "${userQuestion}"` : ""}`;
 
-      // For K2 Think: Use FREE LOCAL OCR (Tesseract.js) to extract text/context first
-      if (this.useK2Think) {
-        try {
-          console.log("[LLMHelper] Starting Local OCR with Tesseract.js...");
-          const ocrResult = await Tesseract.recognize(imagePath, 'eng');
-          const extractedText = ocrResult.data.text;
-          console.log("[LLMHelper] Local OCR complete. Extracted text length:", extractedText.length);
-
-          const prompt = `${this.systemPrompt}\n\nCONTEXT FROM SCREENSHOT (EXTRACTED VIA LOCAL OCR):\n"""\n${extractedText}\n"""\n\n${versatilePrompt}\n\nAnalyze the extracted content above and provide the best possible solution.`;
-          try {
-            const result = await this.callK2Think(prompt);
-            return { text: result, timestamp: Date.now() };
-          } catch (k2Error: any) {
-            console.warn(`[LLMHelper] K2 Think failed (${k2Error.message}), falling back to Gemini for image analysis...`);
-            // Fall through to Gemini below
-          }
-        } catch (e) {
-          console.error("[LLMHelper] Local OCR failed, falling back to Gemini:", e);
-        }
-      }
-
-      // Gemini implementation for image analysis (also used as fallback)
-      try {
-        const imageData = await fs.promises.readFile(imagePath);
-        const imagePart = {
-          inlineData: {
-            data: imageData.toString("base64"),
-            mimeType: "image/png"
-          }
-        };
-        if (!this.model) await this.getGeminiClient();
-        const result = await this.generateContentWithRetry([{ parts: [{ text: versatilePrompt }, imagePart] }]);
-        const text = result.candidates[0].content.parts[0].text;
-        return { text, timestamp: Date.now() };
-      } catch (geminiError: any) {
-        // If Gemini was primary and failed, try K2 Think as fallback
-        if (!this.useK2Think && this.k2ThinkApiKey) {
-          console.warn(`[LLMHelper] Gemini failed (${geminiError.message}), falling back to K2 Think for image analysis...`);
-          const ocrResult = await Tesseract.recognize(imagePath, 'eng');
-          const extractedText = ocrResult.data.text;
-          const prompt = `${this.systemPrompt}\n\nCONTEXT FROM SCREENSHOT (EXTRACTED VIA LOCAL OCR):\n"""\n${extractedText}\n"""\n\n${versatilePrompt}\n\nAnalyze the extracted content above and provide the best possible solution.`;
-          const result = await this.callK2Think(prompt);
-          return { text: result, timestamp: Date.now() };
-        }
-        throw geminiError;
-      }
+      const result = await this.callImageWithFallback(versatilePrompt, [imagePath]);
+      return { text: result, timestamp: Date.now() };
     } catch (error) {
       console.error("Error analyzing image file:", error);
       throw error;
@@ -474,29 +517,7 @@ Detect the content type automatically from the screenshot and respond with the m
 
   public async chatWithGemini(message: string): Promise<string> {
     try {
-      if (this.useK2Think) {
-        try {
-          return await this.callK2Think(message);
-        } catch (k2Error: any) {
-          console.warn(`[LLMHelper] K2 Think failed (${k2Error.message}), falling back to Gemini for chat...`);
-          if (!this.model) await this.getGeminiClient();
-          const result = await this.generateContentWithRetry(message);
-          return result.candidates[0].content.parts[0].text;
-        }
-      } else if (this.model) {
-        try {
-          const result = await this.generateContentWithRetry(message);
-          return result.candidates[0].content.parts[0].text;
-        } catch (geminiError: any) {
-          if (this.k2ThinkApiKey) {
-            console.warn(`[LLMHelper] Gemini failed (${geminiError.message}), falling back to K2 Think for chat...`);
-            return await this.callK2Think(message);
-          }
-          throw geminiError;
-        }
-      } else {
-        throw new Error("No LLM provider configured");
-      }
+      return await this.callTextWithFallback(message);
     } catch (error) {
       console.error("[LLMHelper] Error in chatWithGemini:", error);
       throw error;

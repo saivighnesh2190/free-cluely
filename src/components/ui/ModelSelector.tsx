@@ -18,7 +18,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<"gemini" | "k2think">("gemini");
-  const [selectedGeminiModel, setSelectedGeminiModel] = useState<string>("models/gemini-2.5-flash");
+  const [selectedGeminiModel, setSelectedGeminiModel] = useState<string>("models/gemini-3-flash-preview");
   const [selectedK2ThinkModel, setSelectedK2ThinkModel] = useState<string>("MBZUAI-IFM/K2-Think-v2");
   const [k2ThinkApiKey, setK2ThinkApiKey] = useState('');
   const { appearance } = useAppearance();
@@ -59,7 +59,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
       if (config.provider === 'k2think') {
         setSelectedK2ThinkModel(config.model);
       } else {
-        setSelectedGeminiModel(config.model || "models/gemini-2.5-flash");
+        setSelectedGeminiModel(config.model || "models/gemini-3-flash-preview");
       }
     } catch (error) {
       console.error('Error loading current config:', error);
@@ -208,8 +208,8 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onModelChange, onChatOpen
               onChange={(e) => setSelectedGeminiModel(e.target.value)}
               className={`${inputBaseClass} mt-1 focus:ring-2 focus:ring-blue-400/60`}
             >
-              <option value="models/gemini-2.5-flash">Gemini 2.5 Flash (default)</option>
-              <option value="models/gemini-3-flash">Gemini 3 Flash</option>
+              <option value="models/gemini-3-flash-preview">Gemini 3 Flash (default)</option>
+              <option value="models/gemini-2.5-flash">Gemini 2.5 Flash</option>
             </select>
           </div>
         </div>

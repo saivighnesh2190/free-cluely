@@ -163,10 +163,10 @@ export function initializeIpcHandlers(appState: AppState): void {
   ipcMain.handle("get-current-llm-config", async () => {
     try {
       const llmHelper = appState.processingHelper.getLLMHelper();
-      return {
-        provider: llmHelper.getCurrentProvider(),
-        model: llmHelper.getCurrentModel()
-      };
+      const provider = llmHelper.getCurrentProvider();
+      const model = llmHelper.getCurrentModel();
+      console.log(`[IPC] get-current-llm-config: provider=${provider}, model=${model}`);
+      return { provider, model };
     } catch (error: any) {
       console.error("Error getting current LLM config:", error);
       throw error;
@@ -177,7 +177,10 @@ export function initializeIpcHandlers(appState: AppState): void {
   ipcMain.handle("switch-to-gemini", async (_, apiKey?: string, model?: string) => {
     try {
       const llmHelper = appState.processingHelper.getLLMHelper();
+      console.log(`[IPC] switch-to-gemini called: apiKey=${apiKey ? '***' : 'undefined'}, model=${model}`);
+      console.log(`[IPC] BEFORE switch: provider=${llmHelper.getCurrentProvider()}`);
       await llmHelper.switchToGemini(apiKey, model);
+      console.log(`[IPC] AFTER switch: provider=${llmHelper.getCurrentProvider()}`);
       return { success: true };
     } catch (error: any) {
       console.error("Error switching to Gemini:", error);
