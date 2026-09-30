@@ -7,7 +7,7 @@ interface ModelConfig {
 }
 
 interface ModelSelectorProps {
-  onModelChange?: (provider: "gemini" | "k2think", model: string) => void;
+  onModelChange?: (provider: "gemini" | "k2think" | "ollama" | "openrouter", model: string) => void;
   onChatOpen?: () => void;
 }
 

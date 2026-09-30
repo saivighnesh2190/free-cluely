@@ -25,8 +25,6 @@ cd free-cluely
 ```bash
 # If you encounter Sharp/Python build errors, use this:
 npx cross-env SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm install --ignore-scripts
-AIzaSyC7lH-8E9i
-
 
 # Or for normal installation:
 npm install
@@ -45,16 +43,12 @@ npm install
    ```env
    K2_THINK_API_KEY=your_k2_think_api_key_here
    USE_K2_THINK=true
-   7uhvHh5BCiD4zoBzt26DIoa0
-   AIzaSyB0Hj0Y9H-z
    ```
 
    **For OpenRouter:**
-   JjKw41b5yRZB-VwaLKyDBhY
    ```env
    OPENROUTER_API_KEY=your_openrouter_api_key_here
    OPENROUTER_MODEL=google/gemini-2.5-flash
-   IFM-Qfd1LfNz
    ```
    
    **For Ollama (Local/Private AI):**
@@ -62,7 +56,6 @@ npm install
    USE_OLLAMA=true
    OLLAMA_MODEL=gemma:latest
    OLLAMA_URL=http://localhost:11434
-   sEwU6GjC
    ```
    
    - Save the file
@@ -115,7 +108,7 @@ The built app will be in the `release` folder.
 
 1. **Closing the App**: 
    - Press `Cmd + Q` (Mac) or `Ctrl + Q` (Windows/Linux) to quit
-   - Or use Activity Monitor/Task Manager to close `Interview Coder`
+   - Or use Activity Monitor/Task Manager to close `Free Cluely`
    - The X button currently doesn't work (known issue)
 
 2. **If the app doesn't start**:
@@ -198,10 +191,13 @@ If you see other errors:
 - Ask follow-up questions for deeper insights
 
 ### **Privacy-First Design**
-- **Local AI Option**: Use Ollama for 100% private processing
-- **Cloud Option**: Google Gemini for maximum performance
-- Screenshots auto-deleted after processing
-- No data tracking or storage
+- **Local AI Option**: Use Ollama for 100% private processing — nothing ever leaves your machine
+- **Cloud Option**: Google Gemini, K2 Think, or OpenRouter for maximum performance (you bring your own API key; no middleman servers)
+- Screenshots and recordings are deleted from disk immediately after being processed, and anything left over is wiped when the app closes
+- No telemetry, analytics, or account required — the app doesn't phone home
+- AI-generated content is sanitized before being rendered, so malicious text captured from your screen/audio can't execute code inside the app
+
+See [PRIVACY.md](PRIVACY.md) for the full breakdown of what data is captured, where it goes, and how to run 100% locally.
 
 ### **Cross-Platform Support**
 - **Windows 10/11** - Full support with native performance

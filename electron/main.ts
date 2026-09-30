@@ -221,7 +221,7 @@ export class AppState {
     
     const contextMenu = Menu.buildFromTemplate([
       {
-        label: 'Show Interview Coder',
+        label: 'Show Free Cluely',
         click: () => {
           this.centerAndShowWindow()
         }
@@ -265,7 +265,7 @@ export class AppState {
       }
     ])
     
-    this.tray.setToolTip('Interview Coder - Press Cmd+Shift+Space to show')
+    this.tray.setToolTip('Free Cluely - Press Cmd/Ctrl+Shift+Space to show')
     this.tray.setContextMenu(contextMenu)
     
     // Set a title for macOS (will appear in menu bar)
@@ -315,6 +315,14 @@ async function initializeApp() {
     if (process.platform !== "darwin") {
       app.quit()
     }
+  })
+
+  // Privacy: wipe any screenshots/recordings still on disk when the app exits.
+  // Most are already deleted right after processing (see ProcessingHelper), but
+  // this is a defense-in-depth cleanup for anything left in the queue (e.g. the
+  // user captured a screenshot but never processed or manually deleted it).
+  app.on("before-quit", () => {
+    appState.getScreenshotHelper().clearQueues()
   })
 
   app.dock?.hide() // Hide dock icon (optional)

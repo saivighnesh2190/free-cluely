@@ -514,7 +514,7 @@ const Queue: React.FC<QueueProps> = ({ setView }) => {
     setIsSettingsOpen(!isSettingsOpen)
   }
 
-  const handleModelChange = (provider: "ollama" | "gemini" | "openrouter", model: string) => {
+  const handleModelChange = (provider: "ollama" | "gemini" | "openrouter" | "k2think", model: string) => {
     setCurrentModel({ provider, model })
     // Update chat messages to reflect the model change
     const modelName = provider === "ollama" ? model : provider === "openrouter" ? model : "Gemini 2.0 Flash"
