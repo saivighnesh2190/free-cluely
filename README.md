@@ -108,7 +108,7 @@ The built app will be in the `release` folder.
 
 1. **Closing the App**: 
    - Press `Cmd + Q` (Mac) or `Ctrl + Q` (Windows/Linux) to quit
-   - Or use Activity Monitor/Task Manager to close `Interview Coder`
+   - Or use Activity Monitor/Task Manager to close `Free Cluely`
    - The X button currently doesn't work (known issue)
 
 2. **If the app doesn't start**:
@@ -191,10 +191,13 @@ If you see other errors:
 - Ask follow-up questions for deeper insights
 
 ### **Privacy-First Design**
-- **Local AI Option**: Use Ollama for 100% private processing
-- **Cloud Option**: Google Gemini for maximum performance
-- Screenshots auto-deleted after processing
-- No data tracking or storage
+- **Local AI Option**: Use Ollama for 100% private processing — nothing ever leaves your machine
+- **Cloud Option**: Google Gemini, K2 Think, or OpenRouter for maximum performance (you bring your own API key; no middleman servers)
+- Screenshots and recordings are deleted from disk immediately after being processed, and anything left over is wiped when the app closes
+- No telemetry, analytics, or account required — the app doesn't phone home
+- AI-generated content is sanitized before being rendered, so malicious text captured from your screen/audio can't execute code inside the app
+
+See [PRIVACY.md](PRIVACY.md) for the full breakdown of what data is captured, where it goes, and how to run 100% locally.
 
 ### **Cross-Platform Support**
 - **Windows 10/11** - Full support with native performance

@@ -7,8 +7,36 @@ import ReactMarkdown from "react-markdown"
 import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
 import rehypeRaw from "rehype-raw"
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize"
 import remarkGfm from "remark-gfm"
 import "katex/dist/katex.min.css"
+
+// Security: AI responses are rendered as Markdown/HTML (rehype-raw lets literal
+// HTML in the AI's answer through). Since that content is ultimately derived from
+// whatever is on the user's screen or said out loud (screenshots/OCR/audio), it
+// must be treated as untrusted input, not just "our own" text. rehype-sanitize
+// strips dangerous tags/attributes (e.g. <script>, onerror=, javascript: URLs)
+// before rendering, so a malicious/prompt-injected response can't execute code
+// in the app. We extend the default schema only enough to keep KaTeX math working
+// (rehype-katex expands these `math-inline`/`math-display` placeholders into safe,
+// library-generated markup *after* sanitization runs).
+const markdownSanitizeSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    code: [
+      ...(defaultSchema.attributes?.code || []),
+      ["className", /^language-./, "math-inline", "math-display"]
+    ],
+    div: [...(defaultSchema.attributes?.div || []), ["className", "math", "math-display"]],
+    span: [...(defaultSchema.attributes?.span || []), ["className", "math", "math-inline"]]
+  }
+} as typeof defaultSchema
+const markdownRehypePlugins = [
+  rehypeRaw,
+  [rehypeSanitize, markdownSanitizeSchema],
+  rehypeKatex
+] as any
 
 import ScreenshotQueue from "../components/Queue/ScreenshotQueue"
 import {
@@ -38,7 +66,7 @@ const preprocessLaTeX = (content: string) => {
     .replace(/\\\)/g, '$$')
     // Detect bare LaTeX environments (like \begin{cases}) that aren't wrapped in delimiters
     // and wrap them in $$ if they aren't already.
-    .replace(/(^|\n)(\\begin\{[a-z\*]+\}[\s\S]*?\\end\{[a-z\*]+\})/g, (match, p1, p2) => {
+    .replace(/(^|\n)(\\begin\{[a-z\*]+\}[\s\S]*?\\end\{[a-z\*]+\})/g, (_match, p1, p2) => {
       // Check if it's already inside $$ or $ (very basic check)
       return `${p1}$$$$\n${p2}\n$$$$`;
     });
@@ -80,7 +108,7 @@ export const ContentSection = ({
       >
         <ReactMarkdown
           remarkPlugins={[remarkMath, remarkGfm]}
-          rehypePlugins={[rehypeKatex, rehypeRaw]}
+          rehypePlugins={markdownRehypePlugins}
         >
           {preprocessLaTeX(content as string)}
         </ReactMarkdown>
@@ -131,7 +159,7 @@ const SolutionSection = ({
           <div className={`markdown-content ${appearance === "black" ? "prose-invert" : ""}`}>
             <ReactMarkdown
               remarkPlugins={[remarkMath, remarkGfm]}
-              rehypePlugins={[rehypeKatex, rehypeRaw]}
+              rehypePlugins={markdownRehypePlugins}
               components={{
                 code({ node, inline, className, children, ...props }: any) {
                   const match = /language-(\w+)/.exec(className || "")
@@ -198,7 +226,7 @@ const ReasoningSection = ({
       >
         <ReactMarkdown
           remarkPlugins={[remarkMath, remarkGfm]}
-          rehypePlugins={[rehypeKatex, rehypeRaw]}
+          rehypePlugins={markdownRehypePlugins}
         >
           {preprocessLaTeX(reasoning)}
         </ReactMarkdown>
@@ -603,7 +631,7 @@ const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
                     >
                       <ReactMarkdown
                         remarkPlugins={[remarkMath, remarkGfm]}
-                        rehypePlugins={[rehypeKatex, rehypeRaw]}
+                        rehypePlugins={markdownRehypePlugins}
                       >
                         {preprocessLaTeX(problemStatementData.problem_statement)}
                       </ReactMarkdown>
@@ -638,7 +666,7 @@ const Solutions: React.FC<SolutionsProps> = ({ setView }) => {
                               <div className="space-y-1 markdown-content prose-compact">
                                 <ReactMarkdown
                                   remarkPlugins={[remarkMath, remarkGfm]}
-                                  rehypePlugins={[rehypeKatex, rehypeRaw]}
+                                  rehypePlugins={markdownRehypePlugins}
                                 >
                                   {preprocessLaTeX(thoughtsData.map(t => `* ${t}`).join("\n"))}
                                 </ReactMarkdown>

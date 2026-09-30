@@ -420,7 +420,7 @@ CRITICAL: You MUST use Markdown for all responses.
       const result = await this.callTextWithFallback(prompt);
       const text = this.cleanJsonResponse(result);
       const parsed = JSON.parse(text);
-      console.log("[LLMHelper] Parsed LLM response:", parsed);
+      console.log("[LLMHelper] Successfully parsed solution response.");
       return parsed;
     } catch (error) {
       console.error("[LLMHelper] Error in generateSolution:", error);
@@ -442,7 +442,7 @@ CRITICAL: You MUST use Markdown for all responses.
 
       const result = await this.callImageWithFallback(prompt, debugImagePaths);
       const parsed = JSON.parse(this.cleanJsonResponse(result));
-      console.log("[LLMHelper] Parsed debug LLM response:", parsed);
+      console.log("[LLMHelper] Successfully parsed debug response.");
       return parsed;
     } catch (error) {
       console.error("Error debugging solution with images:", error)

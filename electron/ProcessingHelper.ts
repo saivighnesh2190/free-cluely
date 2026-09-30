@@ -59,6 +59,8 @@ export class ProcessingHelper {
           const extension = path.extname(lastPath).toLowerCase()
           const mimeType = extension === '.wav' ? 'audio/wav' : 'audio/mpeg'
           await this.processVoiceRecording(audioBuffer.toString('base64'), mimeType)
+          // Privacy: the raw recording has been analyzed, delete it from disk immediately.
+          await this.appState.deleteScreenshot(lastPath)
           return;
         } catch (err: any) {
           console.error('Audio processing error:', err);
@@ -86,6 +88,9 @@ export class ProcessingHelper {
         };
         mainWindow.webContents.send(this.appState.PROCESSING_EVENTS.PROBLEM_EXTRACTED, problemInfo);
         this.appState.setProblemInfo(problemInfo);
+        // Privacy: the screenshot has served its purpose (extracted into problemInfo above),
+        // so delete it from disk now instead of leaving it to linger indefinitely.
+        await this.appState.deleteScreenshot(lastPath)
       } catch (error: any) {
         console.error("Image processing error:", error)
         mainWindow.webContents.send(this.appState.PROCESSING_EVENTS.INITIAL_SOLUTION_ERROR, error.message)
@@ -128,6 +133,11 @@ export class ProcessingHelper {
           this.appState.PROCESSING_EVENTS.DEBUG_SUCCESS,
           debugResult
         )
+
+        // Privacy: these debug screenshots have been analyzed and are no longer needed on disk.
+        for (const screenshotPath of extraScreenshotQueue) {
+          await this.appState.deleteScreenshot(screenshotPath)
+        }
 
       } catch (error: any) {
         console.error("Debug processing error:", error)
