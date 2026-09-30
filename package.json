@@ -1,12 +1,12 @@
 {
-  "name": "interview-coder",
+  "name": "free-cluely",
   "version": "1.0.0",
   "main": "./dist-electron/main.js",
   "scripts": {
     "clean": "rimraf dist dist-electron",
     "dev": "vite --port 5280",
     "build": "npm run clean && tsc && vite build",
-    " ": "vite preview",
+    "preview": "vite preview",
     "postinstall": "cross-env SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm rebuild sharp",
     "electron:dev": "tsc -p electron/tsconfig.json && cross-env NODE_ENV=development electron .",
     "electron:build": "tsc -p electron/tsconfig.json && cross-env NODE_ENV=production electron .",
@@ -17,8 +17,8 @@
     "dist": "npm run app:build"
   },
   "build": {
-    "appId": "com.electron.meeting-notes",
-    "productName": "Meeting Notes Coder",
+    "appId": "com.freecluely.app",
+    "productName": "Free Cluely",
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
@@ -96,8 +96,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "ibttf",
-        "repo": "interview-coder-frontend"
+        "owner": "saivighnesh2190",
+        "repo": "free-cluely"
       }
     ]
   },
